@@ -1,0 +1,147 @@
+# Twin Digital Hospital System Configuration
+# This file defines all system parameters and settings
+
+patient_data:
+  number_of_patients: 8
+  patient_info:
+    - id
+    - name
+    - age
+    - gender
+    - contact
+    - insurance
+    - status
+    - arrival_time
+    - discharge_time
+    - priority
+    - waiting_history
+    - medical_record
+  
+  priority_levels:
+    1: "Emergency"
+    2: "Standard" 
+  
+  patient_status:
+    - "New"
+    - "Triage"
+    - "Registration"
+    - "Waiting"
+    - "In Consultation"
+    - "Undergoing Examination"
+    - "Undergoing Lab Test"
+    - "Collecting Medicine from Pharmacy"
+    - "Discharged"
+  
+  medical_record:
+    - "diagnoses"
+    - "prescriptions"
+    - "tests"
+    - "consultations"
+
+doctor_data:
+  number_of_doctors: 6
+  doctor_info:
+    - name
+    - specialty
+    - staff_id
+    - years_experience
+    - status
+    - current_patient
+    - patients_seen_today
+    - max_patients_per_day
+    - schedule
+    - consultation_history
+    - shift_start
+    - shift_end
+  
+  specialties:
+    - "General"
+    - "Cardiologist"
+    - "Dermatologist"
+    - "Neurologist"
+    - "Pediatrician"
+  
+  doctor_status:
+    - "Available"
+    - "In Consultation"
+    - "Reviewing Records"
+    - "On Break"
+    - "Off Duty"
+
+hospital_data:
+  hospital_info:
+    - id
+    - name
+    - doctors
+    - patients
+    - active_patients
+    - rooms
+    - departments
+    - resource_logs
+    - patient_logs
+    - revenue
+    - expenses
+    - billing_records
+  
+  # Room configuration: room_type: total_count
+  rooms:
+    consultation: 6
+    waiting: 2
+    triage: 2
+    registration: 2
+    lab: 2
+    examination: 3
+    pharmacy: 2
+    emergency: 2
+  
+  # Doctors per department (used for capacity planning)
+  doctor_per_department:
+    General: 2
+    Cardiologist: 1
+    Dermatologist: 1
+    Neurologist: 1
+    Pediatrician: 1
+  
+  # Medical devices available in the hospital
+  devices:
+    - "ECG Machine"
+    - "X-Ray Machine"
+    - "MRI Scanner"
+    - "CT Scanner"
+    - "Ultrasound Machine"
+    - "Blood Analyzer"
+    - "Urinalysis Machine"
+    - "Throat Culture Equipment"
+
+# System-wide settings
+system_settings:
+  logging:
+    level: "INFO"
+    console_output: true
+    file_output: true
+    detailed_logs: true
+  
+  simulation:
+    real_time_delays: true
+    patient_processing_speed: "normal"  # slow, normal, fast
+    enable_statistics: true
+    enable_export: true
+  
+  hospital_operations:
+    operating_hours_start: "07:00"
+    operating_hours_end: "19:00"
+    emergency_24_7: true
+    max_daily_capacity: 200
+    
+  financial:
+    currency: "USD"
+    consultation_base_fee: 150.0
+    examination_fee_range: [100, 400]
+    lab_test_fee_range: [50, 250]
+    prescription_fee_range: [20, 150]
+
+llm:
+  model_name: "gpt-4"
+  api_key: "your_api_key_here"
+  base_url: "https://api.openai.com/v1"
+  provider: "openai"
