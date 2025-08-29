@@ -1,6 +1,7 @@
-__pycache__/
+**/__pycache__/
 
 exports/
 logs/
 .DS_Store
 nohup.out
+

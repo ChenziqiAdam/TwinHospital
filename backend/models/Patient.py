@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 import logging
-from config import get_config
+from ..config import get_config
 
 # Configure logger for Patient class
 logger = logging.getLogger(__name__)

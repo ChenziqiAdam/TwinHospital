@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
 import logging
-from config import get_config
+from ..config import get_config
 
 # Configure logger for Hospital class
 logger = logging.getLogger(__name__)
@@ -690,13 +690,13 @@ class Hospital:
                 print(self._format_console_message("INFO", "Doctor recommends additional tests"))
                 
                 if random.choice([True, False]):
-                    test_type = random.choice(["X-Ray", "CT Scan", "Ultrasound", "MRI"])
+                    test_type = random.choice(["ECG", "X-Ray", "CT", "Ultrasound", "MRI"])
                     needs_tests.append(("Examination", test_type))
                     patient.medical_record["tests"].append(f"{test_type} ordered by Dr. {doctor.name}")
                     print(self._format_console_message("ORDER", f"{test_type} ordered"))
                 
                 if random.choice([True, False]) or not needs_tests:
-                    lab_test = random.choice(["Blood Work", "Urinalysis", "Throat Culture", "COVID Test"])
+                    lab_test = random.choice(["Blood Analyze", "Urinalysis"])
                     needs_tests.append(("Lab Test", lab_test))
                     patient.medical_record["tests"].append(f"{lab_test} ordered by Dr. {doctor.name}")
                     print(self._format_console_message("ORDER", f"{lab_test} ordered"))

@@ -106,12 +106,11 @@ hospital_data:
   devices:
     - "ECG Machine"
     - "X-Ray Machine"
-    - "MRI Scanner"
-    - "CT Scanner"
+    - "MRI Machine"
+    - "CT Machine"
     - "Ultrasound Machine"
-    - "Blood Analyzer"
+    - "Blood Analyze Machine"
     - "Urinalysis Machine"
-    - "Throat Culture Equipment"
 
 # System-wide settings
 system_settings:

@@ -8,10 +8,10 @@ from pathlib import Path
 from typing import List, Dict, Any
 
 # Import our classes
-from config import load_config, get_config
-from Patient import Patient
-from Doctor import Doctor
-from Hospital import Hospital
+from backend.config import load_config, get_config
+from backend.models.Patient import Patient
+from backend.models.Doctor import Doctor
+from backend.models.Hospital import Hospital
 
 def setup_logging():
     """Setup comprehensive logging system."""
