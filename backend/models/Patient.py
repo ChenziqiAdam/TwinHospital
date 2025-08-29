@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 class Patient:
     def __init__(self, patient_id: int, name: str, age: int = None, gender: str = None, 
-                 contact: str = None, insurance: bool = True):
+                 contact: str = None, insurance: bool = True, symptoms: List = None, medical_history: List = None):
         """
         Initializes a Patient instance using configuration settings.
         
@@ -49,6 +49,13 @@ class Patient:
         # Tracking information
         self.waiting_history = []
         self.has_medical_card = False
+
+        # Symptoms and Medical History
+        self.symptoms = symptoms
+        self.medical_history = medical_history
+
+        # Consultation history
+        self.consultation_history = []
         
         # Log patient arrival with improved formatting
         logger.info(self._format_log_entry("ARRIVAL", f"Patient arrived at hospital"))
@@ -256,7 +263,9 @@ class Patient:
                 "name": self.name,
                 "age": self.age,
                 "gender": self.gender,
-                "insurance": self.insurance
+                "insurance": self.insurance,
+                "symptoms": self.symptoms,
+                "medical_history": self.medical_history
             },
             "visit_info": {
                 "arrival_time": self.arrival_time,

@@ -16,6 +16,9 @@ patient_data:
     - priority
     - waiting_history
     - medical_record
+    - symptoms
+    - medical_history
+    - consultation_history
   
   priority_levels:
     1: "Emergency"
@@ -139,8 +142,14 @@ system_settings:
     lab_test_fee_range: [50, 250]
     prescription_fee_range: [20, 150]
 
+# llm:
+#   model_name: "gpt-4"
+#   api_key: "your_api_key_here"
+#   base_url: "https://api.openai.com/v1"
+#   provider: "openai"
+
 llm:
-  model_name: "gpt-4"
-  api_key: "your_api_key_here"
-  base_url: "https://api.openai.com/v1"
-  provider: "openai"
+  model_name: deepseek-ai/DeepSeek-V3
+  api_key: sk-szbhnnmhpmfkkduuvymznhhewcfpgajyggzpjngbkgsbhjcv
+  base_url: https://api.siliconflow.cn/v1
+  provider: openai

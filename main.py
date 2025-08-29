@@ -118,6 +118,21 @@ def generate_random_patients(count: int = None) -> List[Patient]:
         
         # Assign insurance (70% have insurance)
         insurance = False if random.random() > 0.7 else True
+
+        # Generate symptoms (1-3 random symptoms)
+        possible_symptoms = [
+            "Fever", "Cough", "Shortness of breath", "Headache", "Nausea", "Dizziness",
+            "Fatigue", "Chest pain", "Abdominal pain", "Back pain", "Sore throat",
+            "Runny nose", "Muscle aches", "Joint pain", "Rash"
+        ]
+        symptoms = random.sample(possible_symptoms, k=random.randint(1, 3))
+
+        # Generate medical history (0-2 random conditions)
+        possible_conditions = [
+            "Diabetes", "Hypertension", "Asthma", "Allergies", "Heart Disease",
+            "Arthritis", "Depression", "Anxiety", "Chronic Pain"
+        ]
+        medical_history = random.sample(possible_conditions, k=random.randint(0, 2))
         
         # Create patient
         patient = Patient(
@@ -126,7 +141,9 @@ def generate_random_patients(count: int = None) -> List[Patient]:
             age=age,
             gender=gender,
             contact=phone,
-            insurance=insurance
+            insurance=insurance,
+            symptoms=symptoms,
+            medical_history=medical_history
         )
         
         # Randomly assign medical card (80% already have one)

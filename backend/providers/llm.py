@@ -6,7 +6,7 @@ from ollama import chat, Client
 import logging
 from pydantic import BaseModel
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from config import Config
+from ..config import LLMConfig
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class BaseLLMController(ABC):
 class OpenAIController(BaseLLMController):
     def __init__(
         self,
-        llm_config: Optional[Config.LLMConfig] = None,
+        llm_config: Optional[LLMConfig] = None,
     ):
         self.model = (
             llm_config.model_name
@@ -58,8 +58,8 @@ class OpenAIController(BaseLLMController):
             else 0.7
         )
         base_url = (
-            llm_config.api_base
-            if llm_config and hasattr(llm_config, "api_base")
+            llm_config.base_url
+            if llm_config and hasattr(llm_config, "base_url")
             else None
         )
         self.frequency_penalty = (
@@ -168,7 +168,7 @@ class OpenAIController(BaseLLMController):
 
 
 class OllamaController(BaseLLMController):
-    def __init__(self, llm_config: Optional[Config.LLMConfig] = None):
+    def __init__(self, llm_config: Optional[LLMConfig] = None):
         self.model = (
             llm_config.model_name
             if llm_config and hasattr(llm_config, "model_name")
@@ -194,9 +194,9 @@ class OllamaController(BaseLLMController):
             if llm_config and hasattr(llm_config, "presence_penalty")
             else 0.0
         )
-        self.api_base = (
-            llm_config.api_base
-            if llm_config and hasattr(llm_config, "api_base")
+        self.base_url = (
+            llm_config.base_url
+            if llm_config and hasattr(llm_config, "base_url")
             else None
         )
         self.api_key = (
@@ -204,7 +204,7 @@ class OllamaController(BaseLLMController):
             if llm_config and hasattr(llm_config, "api_key")
             else None
         )
-        self.client = Client(host=self.api_base)
+        self.client = Client(host=self.base_url)
 
     def _prepare_messages(
         self, prompt: Union[str], add_system_prompt: bool = True
@@ -278,20 +278,20 @@ class LLM:
 
     def __init__(
         self,
-        llm_config: Optional[Config.LLMConfig] = None,
+        llm_config: Optional[LLMConfig] = None,
     ):
         if llm_config is None:
             raise ValueError("Config must be provided")
 
         self.config = llm_config
         self.max_workers = getattr(llm_config, "max_workers", 4)
-        backend = llm_config.backend
-        if backend == "openai":
+        provider = llm_config.provider
+        if provider == "openai":
             self.llm = OpenAIController(llm_config=llm_config)
-        elif backend == "ollama":
+        elif provider == "ollama":
             self.llm = OllamaController(llm_config=llm_config)
         else:
-            raise ValueError("Backend must be one of: 'openai', 'ollama'")
+            raise ValueError("provider must be one of: 'openai', 'ollama'")
 
     def get_completion(
         self, prompt: Union[str], json_response: bool = False
@@ -303,6 +303,7 @@ class LLM:
                 return self.llm.get_completion(prompt, json_response)
             except Exception as e:
                 print(f"Error getting completion: {e}")
+                print("Prompt was:", prompt)
                 retry += 1
                 if retry >= max_retries:
                     raise RuntimeError(

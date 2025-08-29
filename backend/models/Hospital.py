@@ -3,8 +3,11 @@ import time
 from datetime import datetime, timedelta
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
+import json
 import logging
 from ..config import get_config
+from ..providers.llm import LLM
+from ..prompts.triage_nurse import TRIAGE_NURSE_PROMPT
 
 # Configure logger for Hospital class
 logger = logging.getLogger(__name__)
@@ -19,6 +22,7 @@ class Hospital:
             doctors (list, optional): A list of Doctor objects in the hospital.
         """
         config = get_config()
+        self.llm = LLM(llm_config=config.llm_config)
         
         # Basic hospital information
         self.id = str(uuid.uuid4())
@@ -594,28 +598,47 @@ class Hospital:
         
         patient.update_status("Triage")
         
-        # Generate realistic vitals
-        temperature = round(random.uniform(36.1, 38.5), 1)
-        systolic = random.randint(110, 140)
-        diastolic = random.randint(70, 90)
-        blood_pressure = f"{systolic}/{diastolic}"
-        heart_rate = random.randint(60, 100)
-        respiratory_rate = random.randint(12, 20)
+        # Triage Nurse
+        prompt = TRIAGE_NURSE_PROMPT.format(
+            name = patient.name,
+            age=patient.age,
+            gender=patient.gender,
+            symptoms=patient.symptoms,
+            medical_history=patient.medical_history
+        )
+
+        llm_response = self.llm.get_completion(prompt=prompt)
+        try:
+            response = llm_response.split("```json")[1].split("```")[0].strip()
+            # Use json.loads() to parse the string into a Python dictionary
+            triage_result = json.loads(response)
+            
+            # Now you can access the data like a normal dictionary
+            priority = triage_result['priority']
+            initial_assessment = triage_result['initial_assessment']
+            temperature = triage_result['vital_stats']['temperature']
+            blood_pressure = triage_result['vital_stats']['blood_pressure']
+            heart_rate = triage_result['vital_stats']['heart_rate']
+            respiratory_rate = triage_result['vital_stats']['respiratory_rate']
+
+        except json.JSONDecodeError as e:
+            # This block will run if the string is NOT valid JSON
+            print(f"Error decoding JSON: {e}")
+            print(f"Raw response was: {llm_response}")
         
         patient.record_vitals(temperature, blood_pressure, heart_rate, respiratory_rate)
+        patient.set_priority(priority)
+        patient.add_note(initial_assessment, "Triage Nurse")
         
-        # Assess priority based on vitals
-        if temperature > 38.0 or systolic > 140 or heart_rate > 100:
-            patient.set_priority(2)
-            patient.add_note("Elevated vital signs requiring prompt attention", "Triage Nurse")
-        elif temperature < 36.5 or systolic < 100 or heart_rate < 60:
-            patient.set_priority(2)
-            patient.add_note("Concerning vital signs detected", "Triage Nurse")
-        
-        print(self._format_console_message("VITALS", 
-            f"Vitals recorded - T: {temperature}°C, BP: {blood_pressure}, HR: {heart_rate}"))
-        print(self._format_console_message("PRIORITY", 
-            f"Priority Level: {patient.priority} ({patient.priority_description})"))
+        vital_console_message = self._format_console_message("VITALS", 
+            f"Vitals recorded - T: {temperature}°C, BP: {blood_pressure}, HR: {heart_rate}")
+        print(vital_console_message)
+        priority_console_message = self._format_console_message("PRIORITY", 
+            f"Priority Level: {patient.priority} ({patient.priority_description})")
+        print(priority_console_message)
+        assessment_console_message = self._format_console_message("ASSESSMENT", 
+            f"Initial Assessment: {initial_assessment}")
+        print(assessment_console_message)
         
         self.release_room("triage")
         time.sleep(1)
