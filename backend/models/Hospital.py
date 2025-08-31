@@ -8,6 +8,7 @@ import logging
 from ..config import get_config
 from ..providers.llm import LLM
 from ..prompts.triage_nurse import TRIAGE_NURSE_PROMPT
+from ..prompts.consultation_doctor import CONSULTATION_DOCTOR_PROMPT
 
 # Configure logger for Hospital class
 logger = logging.getLogger(__name__)
@@ -34,8 +35,9 @@ class Hospital:
         # Initialize rooms based on configuration
         self.rooms = self._initialize_rooms()
         
-        # Initialize medical devices from configuration
+        # Initialize medical devices and test tyeps from configuration
         self.medical_devices = self._initialize_devices()
+        self.medical_tests = self._initialize_tests()
         
         # Initialize departments based on configuration
         self.departments = self._initialize_departments()
@@ -64,7 +66,7 @@ class Hospital:
         
         # Log hospital initialization
         logger.info(self._format_log_entry("INITIALIZATION", 
-            f"Hospital '{name}' initialized with {len(self.doctors)} doctors and {len(self.departments)} departments"))
+            f"Hospital '{name}' initialized with {len(self.doctors)} doctors and {len(self.departments)} departments. Devices {self.medical_devices}. Tests {self.medical_tests}"))
         print(self._format_console_header())
         print(self._format_console_message("INIT", 
             f"Welcome to {self.name}! Hospital system initialized successfully"))
@@ -119,6 +121,18 @@ class Hospital:
             f"Initialized medical devices: {', '.join(device_list)}"))
         
         return devices
+    
+    def _initialize_tests(self) -> Dict[str, List[str]]:
+        """Initialize available medical tests from configuration."""
+        config = get_config()
+        tests = config.get_tests()
+        
+        logger.info(self._format_log_entry("TESTS_INIT", 
+            f"Available Examinations: {', '.join(tests['Examination'])}; "))
+        logger.info(self._format_log_entry("TESTS_INIT", 
+            f"Available Lab Tests: {', '.join(tests['Lab_Test'])}; "))
+                
+        return tests
 
     def _initialize_departments(self) -> Dict[str, Dict[str, Any]]:
         """Initialize departments based on configuration."""
@@ -599,7 +613,7 @@ class Hospital:
         patient.update_status("Triage")
         
         # Triage Nurse
-        prompt = TRIAGE_NURSE_PROMPT.format(
+        triage_prompt = TRIAGE_NURSE_PROMPT.format(
             name = patient.name,
             age=patient.age,
             gender=patient.gender,
@@ -607,7 +621,7 @@ class Hospital:
             medical_history=patient.medical_history
         )
 
-        llm_response = self.llm.get_completion(prompt=prompt)
+        llm_response = self.llm.get_completion(prompt=triage_prompt)
         try:
             response = llm_response.split("```json")[1].split("```")[0].strip()
             # Use json.loads() to parse the string into a Python dictionary
@@ -707,37 +721,50 @@ class Hospital:
             # Simulate consultation time
             time.sleep(2)
             
+            # TODO: Why some patients skip consultation?
             # Determine if tests are needed
             needs_tests = []
-            if random.choice([True, False]):
-                print(self._format_console_message("INFO", "Doctor recommends additional tests"))
-                
-                if random.choice([True, False]):
-                    test_type = random.choice(["ECG", "X-Ray", "CT", "Ultrasound", "MRI"])
-                    needs_tests.append(("Examination", test_type))
-                    patient.medical_record["tests"].append(f"{test_type} ordered by Dr. {doctor.name}")
-                    print(self._format_console_message("ORDER", f"{test_type} ordered"))
-                
-                if random.choice([True, False]) or not needs_tests:
-                    lab_test = random.choice(["Blood Analyze", "Urinalysis"])
-                    needs_tests.append(("Lab Test", lab_test))
-                    patient.medical_record["tests"].append(f"{lab_test} ordered by Dr. {doctor.name}")
-                    print(self._format_console_message("ORDER", f"{lab_test} ordered"))
-            else:
-                # Direct diagnosis
-                diagnosis = random.choice([
-                    "Common Cold", "Allergic Rhinitis", "Minor Contusion", 
-                    "Tension Headache", "Gastroenteritis"
-                ])
-                patient.add_diagnosis(diagnosis, doctor.name)
-                
-                prescription = f"Treatment for {diagnosis}"
-                patient.medical_record["prescriptions"].append(prescription)
-                
-                print(self._format_console_message("DIAGNOSIS", 
-                    f"Diagnosed: {diagnosis}"))
-                print(self._format_console_message("PRESCRIPTION", 
-                    f"Prescribed: {prescription}"))
+            consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
+                doctor_name=doctor.name,
+                doctor_specialty=doctor.specialty,
+                doctor_years_experience=doctor.years_experience,
+                patient_name=patient.name,
+                patient_age=patient.age,
+                patient_gender=patient.gender,
+                patient_symptoms=patient.symptoms,
+                patient_medical_history=patient.medical_history,
+                consultation_history=patient.consultation_history,
+                medical_record=patient.medical_record,
+                medical_tests=self.medical_tests
+            )
+
+            llm_response = self.llm.get_completion(prompt=consultation_prompt)
+            try:
+                response = llm_response.split("```json")[1].split("```")[0].strip()
+                # Use json.loads() to parse the string into a Python dictionary
+                consultation_result = json.loads(response)
+
+                if consultation_result.get("tests_needed"):
+                    for test in consultation_result["tests_needed"]:
+                        if test in self.medical_tests["Lab_Test"] or test in self.medical_tests["Examination"]:
+                            needs_tests.append(("Lab Test" if test in self.medical_tests["Lab_Test"] else "Examination", test))
+                            patient.medical_record["tests"].append(f"{test} recommended by Dr. {doctor.name}")
+                            print(self._format_console_message("RECOMMEND", f"{test} recommended"))
+                else:
+                    diagnosis = consultation_result.get("diagnosis")
+                    patient.add_diagnosis(diagnosis, doctor.name)
+                    prescription = consultation_result.get("prescription")
+                    patient.medical_record["prescriptions"].append(prescription)
+
+                    print(self._format_console_message("DIAGNOSIS", 
+                        f"Diagnosed: {diagnosis}"))
+                    print(self._format_console_message("PRESCRIPTION", 
+                        f"Prescribed: {prescription}"))
+
+            except json.JSONDecodeError as e:
+                # This block will run if the string is NOT valid JSON
+                print(f"Error decoding JSON: {e}")
+                print(f"Raw response was: {llm_response}")
             
             doctor.end_consultation()
         
@@ -769,7 +796,7 @@ class Hospital:
             self.allocate_room("examination")
         
         # Allocate device if available
-        device_allocated = self.allocate_device(test_name.replace(" ", " ").split()[0] + " Machine")
+        device_allocated = self.allocate_device(test_name + " Machine")
         
         patient.update_status(f"Undergoing Examination")
         time.sleep(2)

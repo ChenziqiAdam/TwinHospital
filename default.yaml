@@ -45,6 +45,8 @@ doctor_data:
   number_of_doctors: 6
   doctor_info:
     - name
+    - gender
+    - age
     - specialty
     - staff_id
     - years_experience
@@ -114,6 +116,18 @@ hospital_data:
     - "Ultrasound Machine"
     - "Blood Analyze Machine"
     - "Urinalysis Machine"
+
+  # Medical tests available (Align with devices)
+  tests:
+    Examination:
+      - "Blood Analyze"
+      - "Urinalysis"
+    Lab_Test:
+      - "ECG"
+      - "X-Ray"
+      - "MRI"
+      - "CT"
+      - "Ultrasound"
 
 # System-wide settings
 system_settings:

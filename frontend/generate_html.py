@@ -644,7 +644,7 @@ def generate_hospital_report_html(json_file_path, output_html_path):
 # Usage example
 if __name__ == "__main__":
     # Replace with your JSON file path and desired output path
-    json_file_path = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/hospital_simulation_export_20250829_134156.json"  # Path to your JSON file
+    json_file_path = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/hospital_simulation_export_20250829_163104.json"  # Path to your JSON file
     output_html_path = "hospital_report.html"  # Output HTML file path
     
     generate_hospital_report_html(json_file_path, output_html_path)

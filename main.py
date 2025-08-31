@@ -203,6 +203,9 @@ def generate_doctors_from_config() -> List[Doctor]:
             # Generate doctor attributes
             staff_id = f"D{staff_id_counter:03d}"
             experience = random.randint(2, 25)
+
+            age = random.randint(18, 85)
+            gender = random.choice(["Male", "Female", "Other"])
             
             # Specialty-specific patient capacity
             if specialty in ["Emergency", "General"]:
@@ -215,6 +218,8 @@ def generate_doctors_from_config() -> List[Doctor]:
             doctor = Doctor(
                 name=name,
                 specialty=specialty,
+                age=age,
+                gender=gender,
                 staff_id=staff_id,
                 years_experience=experience,
                 max_patients_per_day=max_patients

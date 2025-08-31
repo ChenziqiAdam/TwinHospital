@@ -24,6 +24,7 @@ class HospitalConfig(BaseModel):
     rooms: Dict[str, int] = Field(default_factory=dict)
     doctor_per_department: Dict[str, int] = Field(default_factory=dict)
     devices: List[str] = Field(default_factory=list)
+    tests: Dict[str, List[str]] = Field(default_factory=dict)
 
 class LLMConfig(BaseModel):
     """Configuration for the language model."""
@@ -94,6 +95,10 @@ class Config(BaseModel):
     def get_devices(self) -> List[str]:
         """Get available medical devices."""
         return self.hospital_data.devices
+    
+    def get_tests(self) -> Dict[str, List[str]]:
+        """Get available medical tests."""
+        return self.hospital_data.tests
 
 # Global configuration instance
 _config: Optional[Config] = None

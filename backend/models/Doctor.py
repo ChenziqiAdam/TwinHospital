@@ -7,7 +7,7 @@ from ..config import get_config
 logger = logging.getLogger(__name__)
 
 class Doctor:
-    def __init__(self, name: str, specialty: str, staff_id: str = None, 
+    def __init__(self, name: str, specialty: str, staff_id: str = None, gender: str = None, age: str = None,
                  years_experience: int = 0, max_patients_per_day: int = 20):
         """
         Initializes a Doctor instance using configuration settings.
@@ -23,6 +23,8 @@ class Doctor:
         
         # Basic doctor information
         self.name = name
+        self.gender = gender
+        self.age = age
         self.specialty = self._validate_specialty(specialty)
         self.staff_id = staff_id or f"D{id(self) % 10000:04d}"
         self.years_experience = years_experience
