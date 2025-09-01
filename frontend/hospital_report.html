@@ -1,0 +1,2003 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Simulation Report - Twin Digital Medical Center</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.5;
+            color: #333;
+            background-color: #f8f9fa;
+            font-size: 14px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            font-size: 1.8em;
+            margin-bottom: 8px;
+        }
+        
+        .header .subtitle {
+            font-size: 1em;
+            opacity: 0.9;
+        }
+        
+        .section {
+            background: white;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            border: 1px solid #e9ecef;
+        }
+        
+        .section-header {
+            background-color: #f8f9fa;
+            padding: 15px 20px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .section-header:hover {
+            background-color: #e9ecef;
+        }
+        
+        .section-header h2 {
+            color: #495057;
+            font-size: 1.2em;
+            margin: 0;
+        }
+        
+        .toggle-icon {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+        }
+        
+        .section-header.collapsed .toggle-icon {
+            transform: rotate(-90deg);
+        }
+        
+        .section-content {
+            padding: 20px;
+            display: block;
+        }
+        
+        .section-content.collapsed {
+            display: none;
+        }
+        
+        .summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        
+        .summary-table th,
+        .summary-table td {
+            padding: 8px 12px;
+            text-align: left;
+            border: 1px solid #dee2e6;
+            font-size: 0.9em;
+        }
+        
+        .summary-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .summary-table tr:nth-child(even) {
+            background-color: #f8f9fa;
+        }
+        
+        .summary-table tr:hover {
+            background-color: #e3f2fd;
+        }
+        
+        .patient-card {
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            background: white;
+        }
+        
+        .patient-header {
+            background-color: #e8f4fd;
+            padding: 12px 15px;
+            border-bottom: 1px solid #dee2e6;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .patient-header:hover {
+            background-color: #d1ecf1;
+        }
+        
+        .patient-header h3 {
+            font-size: 1.1em;
+            margin: 0;
+            color: #2c3e50;
+        }
+        
+        .patient-basic-info {
+            font-size: 0.9em;
+            color: #6c757d;
+            margin-top: 3px;
+        }
+        
+        .patient-details {
+            padding: 15px;
+            display: none;
+        }
+        
+        .patient-details.expanded {
+            display: block;
+        }
+        
+        .detail-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .detail-section {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 6px;
+            padding: 12px;
+        }
+        
+        .detail-section h4 {
+            color: #495057;
+            margin-bottom: 8px;
+            font-size: 1em;
+            border-bottom: 1px solid #dee2e6;
+            padding-bottom: 5px;
+        }
+        
+        .detail-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .detail-list li {
+            margin-bottom: 6px;
+            padding: 4px 0;
+            font-size: 0.9em;
+        }
+        
+        .detail-list li strong {
+            color: #495057;
+            font-weight: 600;
+        }
+        
+        .test-results {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 8px 0;
+            font-size: 0.85em;
+        }
+        
+        .notes-section {
+            background-color: #f8f9fa;
+            border-left: 4px solid #007bff;
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .note-item {
+            margin-bottom: 8px;
+            padding: 6px;
+            background: white;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        
+        .note-header {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 3px;
+        }
+        
+        .status-badge {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: 500;
+        }
+        
+        .status-available {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        
+        .status-discharged {
+            background-color: #cce5ff;
+            color: #004085;
+        }
+        
+        .priority-high { color: #dc3545; font-weight: bold; }
+        .priority-standard { color: #28a745; }
+        .priority-low { color: #6c757d; }
+        
+        .collapsible-btn {
+            background: none;
+            border: none;
+            color: #007bff;
+            cursor: pointer;
+            text-decoration: underline;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+        
+        .collapsible-btn:hover {
+            color: #0056b3;
+        }
+        
+        .hidden-details {
+            display: none;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #dee2e6;
+        }
+        
+        @media (max-width: 768px) {
+            .detail-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .summary-table {
+                font-size: 0.8em;
+            }
+            
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header Section -->
+        <div class="header">
+            <h1>Twin Digital Medical Center</h1>
+            <div class="subtitle">
+                Simulation Report | Generated: 2025-09-01T09:40:05.959079 | 
+                Duration: 0.07 hours | 
+                Patients: 8 | Doctors: 6
+            </div>
+        </div>
+
+        <!-- Executive Summary -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('summary')">
+                <h2>Executive Summary</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content" id="summary">
+                <table class="summary-table">
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Patients Processed</strong></td>
+                        <td>8</td>
+                        <td><strong>Revenue</strong></td>
+                        <td>$3806.00</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tests Performed</strong></td>
+                        <td>16</td>
+                        <td><strong>Net Profit</strong></td>
+                        <td>$3806.00</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Consultations</strong></td>
+                        <td>8</td>
+                        <td><strong>Payment Rate</strong></td>
+                        <td>100.0%</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Patient Satisfaction</strong></td>
+                        <td>4.2/5.0</td>
+                        <td><strong>Avg. Processing Time</strong></td>
+                        <td>45.3 minutes</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Financial Details -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('financial')">
+                <h2>Financial Performance</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="financial">
+                <table class="summary-table">
+                    <tr>
+                        <th>Financial Metric</th>
+                        <th>Value</th>
+                        <th>Details</th>
+                    </tr>
+                    <tr>
+                        <td>Total Revenue</td>
+                        <td>$3806.00</td>
+                        <td>Revenue from all patient services</td>
+                    </tr>
+                    <tr>
+                        <td>Total Expenses</td>
+                        <td>$0.00</td>
+                        <td>Operational costs and overhead</td>
+                    </tr>
+                    <tr>
+                        <td>Net Profit</td>
+                        <td>$3806.00</td>
+                        <td>Revenue minus expenses</td>
+                    </tr>
+                    <tr>
+                        <td>Bills Issued</td>
+                        <td>24</td>
+                        <td>Total number of bills generated</td>
+                    </tr>
+                    <tr>
+                        <td>Payment Rate</td>
+                        <td>100.0%</td>
+                        <td>Percentage of bills paid</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Doctor Performance -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('doctors')">
+                <h2>Medical Staff Performance</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="doctors">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            <th>Doctor</th>
+                            <th>Specialty</th>
+                            <th>Experience</th>
+                            <th>Patients Seen</th>
+                            <th>Utilization</th>
+                            <th>Avg. Consultation</th>
+                            <th>Status</th>
+                            <th>Shift</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td>Alice Chen</td>
+                            <td>General</td>
+                            <td>8 years</td>
+                            <td>2</td>
+                            <td>7.1%</td>
+                            <td>0.1 min</td>
+                            <td><span class="status-badge status-available">Available</span></td>
+                            <td>08:00 - 16:00</td>
+                        </tr>
+
+                        <tr>
+                            <td>Robert Mitchell</td>
+                            <td>General</td>
+                            <td>23 years</td>
+                            <td>3</td>
+                            <td>8.6%</td>
+                            <td>0.1 min</td>
+                            <td><span class="status-badge status-available">Available</span></td>
+                            <td>08:00 - 18:00</td>
+                        </tr>
+
+                        <tr>
+                            <td>David Wang</td>
+                            <td>Cardiologist</td>
+                            <td>10 years</td>
+                            <td>3</td>
+                            <td>18.8%</td>
+                            <td>0.1 min</td>
+                            <td><span class="status-badge status-available">Available</span></td>
+                            <td>07:00 - 15:00</td>
+                        </tr>
+
+                        <tr>
+                            <td>Maria Garcia</td>
+                            <td>Dermatologist</td>
+                            <td>13 years</td>
+                            <td>3</td>
+                            <td>14.3%</td>
+                            <td>0.1 min</td>
+                            <td><span class="status-badge status-available">Available</span></td>
+                            <td>09:00 - 19:00</td>
+                        </tr>
+
+                        <tr>
+                            <td>Steven Kumar</td>
+                            <td>Neurologist</td>
+                            <td>6 years</td>
+                            <td>2</td>
+                            <td>16.7%</td>
+                            <td>0.1 min</td>
+                            <td><span class="status-badge status-available">Available</span></td>
+                            <td>08:00 - 17:00</td>
+                        </tr>
+
+                        <tr>
+                            <td>Emma Johnson</td>
+                            <td>Pediatrician</td>
+                            <td>9 years</td>
+                            <td>3</td>
+                            <td>13.0%</td>
+                            <td>0.1 min</td>
+                            <td><span class="status-badge status-available">Available</span></td>
+                            <td>08:00 - 16:00</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Resource Utilization -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('resources')">
+                <h2>Resource Utilization</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="resources">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            <th>Room Type</th>
+                            <th>Total</th>
+                            <th>Available</th>
+                            <th>Occupied</th>
+                            <th>Utilization Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+
+                        <tr>
+                            <td>Consultation</td>
+                            <td>6</td>
+                            <td>6</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Waiting</td>
+                            <td>2</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Triage</td>
+                            <td>2</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Registration</td>
+                            <td>2</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Lab</td>
+                            <td>2</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Examination</td>
+                            <td>3</td>
+                            <td>3</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Pharmacy</td>
+                            <td>2</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                        <tr>
+                            <td>Emergency</td>
+                            <td>2</td>
+                            <td>2</td>
+                            <td>0</td>
+                            <td>0.0%</td>
+                        </tr>
+
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Patient Details -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('patients')">
+                <h2>Patient Visit Details (8 patients)</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="patients">
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient1')">
+                        <div>
+                            <h3>David Anderson (ID: 6131)</h3>
+                            <div class="patient-basic-info">
+                                Age: 37 | Gender: Female | 
+                                Uninsured | Priority: 2 (Standard) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient1">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 09:07:05.094640</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:36:34.201648</li>
+                                    <li><strong>Waiting Time:</strong> 5 seconds</li>
+                                    <li><strong>Symptoms:</strong> Dizziness, Sore throat, Cough</li>
+                                    <li><strong>Medical History:</strong> Hypertension, Arthritis</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Upper respiratory tract infection with possible viral etiology, exacerbated by underlying hypertension and anemia</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Maria Garcia</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:36:34.200578</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:36:09.774066</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 140 mmHg</div>
+                                    <div>HR: 85 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                Antihistamines for symptomatic relief, throat lozenges, increased fluid intake, and rest. Monitor blood pressure and follow up if symptoms worsen or persist beyond 10 days.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (4 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests1')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests1">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    Blood Analyze recommended by Dr. Robert Mitchell
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    ECG recommended by Dr. Robert Mitchell
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    Blood Analyze Report: Elevated white blood cell count, mild anemia, and slightly high blood sugar levels.
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    ECG Results: Normal sinus rhythm, no significant abnormalities detected
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (5 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes1')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes1">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:09.774622</div>
+                                        <div>37-year-old female presenting with dizziness, sore throat, and cough. Medical history includes hypertension and arthritis.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:21.974428</div>
+                                        <div>Blood Analyze completed - Elevated white blood cell count, mild anemia, and slightly high blood sugar levels.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:26.659404</div>
+                                        <div>ECG completed - Normal sinus rhythm, no significant abnormalities detected</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:34.201314</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:34.201659</div>
+                                        <div>Patient discharged after 0h 29m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient2')">
+                        <div>
+                            <h3>William King (ID: 5210)</h3>
+                            <div class="patient-basic-info">
+                                Age: 73 | Gender: Male | 
+                                Uninsured | Priority: 2 (Standard) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient2">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 09:29:05.094687</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:37:14.234467</li>
+                                    <li><strong>Waiting Time:</strong> 6 seconds</li>
+                                    <li><strong>Symptoms:</strong> Muscle aches, Joint pain, Abdominal pain</li>
+                                    <li><strong>Medical History:</strong> Hypertension</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Possible polymyalgia rheumatica or viral myositis with elevated CRP levels and mild anemia. Rule out underlying liver pathology due to elevated liver enzymes.</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Emma Johnson</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:37:14.233603</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:36:41.025652</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 140.9 mmHg</div>
+                                    <div>HR: 75 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                Prednisone 15mg daily for possible polymyalgia rheumatica, acetaminophen 500mg as needed for pain, and follow-up with a rheumatologist and gastroenterologist for further evaluation of elevated liver enzymes.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (6 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests2')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests2">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    Blood Analyze recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    Urinalysis recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    ECG recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    Blood Analyze Report: Elevated CRP levels, mild anemia, and slightly elevated liver enzymes.
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 5:</strong><br>
+                                    Urinalysis Report: Normal color and appearance, trace protein detected, no glucose or ketones present, negative for nitrites and leukocyte esterase, microscopic examination shows 1-2 RBCs/hpf and 0-1 WBCs/hpf
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 6:</strong><br>
+                                    ECG Results: Normal sinus rhythm, no significant ST-T changes, occasional premature ventricular contractions
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (6 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes2')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes2">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:41.025994</div>
+                                        <div>73-year-old male with symptoms of muscle aches, joint pain, and abdominal pain, with a history of hypertension.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:36:55.359261</div>
+                                        <div>Blood Analyze completed - Elevated CRP levels, mild anemia, and slightly elevated liver enzymes.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:02.037681</div>
+                                        <div>Urinalysis completed - Normal color and appearance, trace protein detected, no glucose or ketones present, negative for nitrites and leukocyte esterase, microscopic examination shows 1-2 RBCs/hpf and 0-1 WBCs/hpf</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:07.029745</div>
+                                        <div>ECG completed - Normal sinus rhythm, no significant ST-T changes, occasional premature ventricular contractions</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:14.234204</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:14.234472</div>
+                                        <div>Patient discharged after 0h 8m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient3')">
+                        <div>
+                            <h3>Sarah Lewis (ID: 3995)</h3>
+                            <div class="patient-basic-info">
+                                Age: 48 | Gender: Other | 
+                                Uninsured | Priority: 2 (Standard) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient3">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 08:38:05.094722</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:37:44.262838</li>
+                                    <li><strong>Waiting Time:</strong> 6 seconds</li>
+                                    <li><strong>Symptoms:</strong> Joint pain, Cough</li>
+                                    <li><strong>Medical History:</strong> Allergies, Asthma</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Possible rheumatoid arthritis with secondary anemia and reactive airway disease</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Steven Kumar</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:37:44.261657</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:37:19.381991</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 120.0 mmHg</div>
+                                    <div>HR: 75 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                NSAIDs for joint pain, iron supplements for anemia, and inhaler for asthma management. Recommend follow-up with a rheumatologist.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (4 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests3')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests3">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    X-Ray recommended by Dr. Alice Chen
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    Blood Analyze recommended by Dr. Alice Chen
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    X-Ray Results: No fractures or dislocations detected. Mild inflammation observed in the joints. Lungs appear clear with no signs of infection or abnormalities.
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    Blood Analyze Report: Elevated white blood cell count and mild anemia detected.
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (5 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes3')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes3">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:19.382371</div>
+                                        <div>48-year-old with joint pain and cough, history of allergies and asthma.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:33.160918</div>
+                                        <div>X-Ray completed - No fractures or dislocations detected. Mild inflammation observed in the joints. Lungs appear clear with no signs of infection or abnormalities.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:38.144688</div>
+                                        <div>Blood Analyze completed - Elevated white blood cell count and mild anemia detected.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:44.262416</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:44.262846</div>
+                                        <div>Patient discharged after 0h 59m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient4')">
+                        <div>
+                            <h3>Nancy Martinez (ID: 8459)</h3>
+                            <div class="patient-basic-info">
+                                Age: 33 | Gender: Female | 
+                                Insured | Priority: 2 (Standard) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient4">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 09:18:05.094753</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:38:13.585364</li>
+                                    <li><strong>Waiting Time:</strong> 5 seconds</li>
+                                    <li><strong>Symptoms:</strong> Fever, Joint pain</li>
+                                    <li><strong>Medical History:</strong> None</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Possible viral or bacterial infection, or inflammatory condition such as rheumatoid arthritis</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Maria Garcia</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:38:13.584845</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:37:49.997797</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 38.5°C</div>
+                                    <div>BP: 120.8 mmHg</div>
+                                    <div>HR: 85 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                NSAIDs (e.g., ibuprofen) for fever and joint pain, and further evaluation for specific infection or autoimmune disorder
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (4 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests4')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests4">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    Blood Analyze recommended by Dr. Robert Mitchell
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    Urinalysis recommended by Dr. Robert Mitchell
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    Blood Analyze Report: Elevated white blood cell count and presence of inflammatory markers
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    Urinalysis Report: Normal color, clarity, and specific gravity. No presence of glucose, protein, or ketones. Trace amounts of leukocytes detected.
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (6 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes4')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes4">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:49.998182</div>
+                                        <div>33-year-old female presenting with fever and joint pain. No significant medical history noted.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:37:51.001179</div>
+                                        <div>Insurance verified: True</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:02.332759</div>
+                                        <div>Blood Analyze completed - Elevated white blood cell count and presence of inflammatory markers</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:07.614727</div>
+                                        <div>Urinalysis completed - Normal color, clarity, and specific gravity. No presence of glucose, protein, or ketones. Trace amounts of leukocytes detected.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:13.585221</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:13.585368</div>
+                                        <div>Patient discharged after 0h 20m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient5')">
+                        <div>
+                            <h3>Karen Brown (ID: 6353)</h3>
+                            <div class="patient-basic-info">
+                                Age: 60 | Gender: Male | 
+                                Insured | Priority: 2 (Standard) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient5">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 08:46:05.094782</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:38:48.163325</li>
+                                    <li><strong>Waiting Time:</strong> 7 seconds</li>
+                                    <li><strong>Symptoms:</strong> Muscle aches</li>
+                                    <li><strong>Medical History:</strong> None</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Possible muscle injury or strain due to elevated creatine kinase levels</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Emma Johnson</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:38:48.161723</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:38:22.778112</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 120.0 mmHg</div>
+                                    <div>HR: 75 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                Rest, over-the-counter pain relievers (e.g., ibuprofen or acetaminophen), and hydration. Follow-up if symptoms persist or worsen.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (4 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests5')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests5">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    Blood Analyze recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    ECG recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    Blood Analyze Report: Elevated creatine kinase levels detected, possible muscle injury or strain.
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    ECG Results: Normal sinus rhythm, no abnormalities detected
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (7 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes5')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes5">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:22.778205</div>
+                                        <div>60-year-old male presenting with muscle aches, no significant medical history noted.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:23.784212</div>
+                                        <div>New medical card issued</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:23.784436</div>
+                                        <div>Insurance verified: True</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Radiology Tech - Examination Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:37.686454</div>
+                                        <div>Blood Analyze completed - Elevated creatine kinase levels detected, possible muscle injury or strain.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:42.189395</div>
+                                        <div>ECG completed - Normal sinus rhythm, no abnormalities detected</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:48.162820</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:48.163334</div>
+                                        <div>Patient discharged after 0h 52m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient6')">
+                        <div>
+                            <h3>Thomas Hill (ID: 9802)</h3>
+                            <div class="patient-basic-info">
+                                Age: 26 | Gender: Male | 
+                                Insured | Priority: 1 (Emergency) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient6">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 09:36:05.094810</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:39:14.871116</li>
+                                    <li><strong>Waiting Time:</strong> 5 seconds</li>
+                                    <li><strong>Symptoms:</strong> Chest pain</li>
+                                    <li><strong>Medical History:</strong> None</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Non-cardiac chest pain, likely musculoskeletal or gastrointestinal in origin</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Steven Kumar</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:39:14.869488</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:38:53.406646</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 120.0 mmHg</div>
+                                    <div>HR: 85 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                Advise patient to monitor symptoms, consider over-the-counter antacids if GERD is suspected, and recommend follow-up if symptoms persist or worsen.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (4 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests6')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests6">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    ECG recommended by Dr. Alice Chen
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    X-Ray recommended by Dr. Alice Chen
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    ECG Results: Normal sinus rhythm, no significant ST-T changes detected
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    X-Ray Results: No abnormalities detected in the chest X-ray.
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (6 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes6')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes6">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:53.407071</div>
+                                        <div>26-year-old male presenting with chest pain, no significant medical history provided.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:38:54.409883</div>
+                                        <div>Insurance verified: True</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:05.038538</div>
+                                        <div>ECG completed - Normal sinus rhythm, no significant ST-T changes detected</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:09.110231</div>
+                                        <div>X-Ray completed - No abnormalities detected in the chest X-ray.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:14.870550</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:14.871127</div>
+                                        <div>Patient discharged after 0h 3m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient7')">
+                        <div>
+                            <h3>Sandra Smith (ID: 7123)</h3>
+                            <div class="patient-basic-info">
+                                Age: 70 | Gender: Male | 
+                                Insured | Priority: 2 (Standard) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient7">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 09:08:05.094839</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:39:38.299718</li>
+                                    <li><strong>Waiting Time:</strong> 5 seconds</li>
+                                    <li><strong>Symptoms:</strong> Headache</li>
+                                    <li><strong>Medical History:</strong> Diabetes, Chronic Pain</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Tension headache, likely secondary to chronic pain and diabetes management</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Maria Garcia</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:39:38.298155</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:39:20.275031</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 120.0 mmHg</div>
+                                    <div>HR: 75 bpm</div>
+                                    <div>RR: 16 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                Acetaminophen 500mg as needed for headache, not to exceed 3000mg per day. Recommend follow-up if headaches persist or worsen.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (2 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests7')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests7">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    CT recommended by Dr. Robert Mitchell
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    CT Results: No abnormalities detected in the CT scan.
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (5 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes7')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes7">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:20.275485</div>
+                                        <div>70-year-old male with headache, history of diabetes and chronic pain. No immediate emergency symptoms noted.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:21.281528</div>
+                                        <div>Insurance verified: True</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:32.416427</div>
+                                        <div>CT completed - No abnormalities detected in the CT scan.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:38.299312</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:38.299726</div>
+                                        <div>Patient discharged after 0h 31m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="patient-card">
+                    <div class="patient-header" onclick="togglePatient('patient8')">
+                        <div>
+                            <h3>Sharon Allen (ID: 8374)</h3>
+                            <div class="patient-basic-info">
+                                Age: 65 | Gender: Female | 
+                                Insured | Priority: 1 (Emergency) | 
+                                Status: <span class="status-badge status-discharged">Discharged</span>
+                            </div>
+                        </div>
+                        <span class="toggle-icon">▼</span>
+                    </div>
+                    <div class="patient-details" id="patient8">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Visit Information</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Arrival:</strong> 2025-09-01 08:45:05.094880</li>
+                                    <li><strong>Discharge:</strong> 2025-09-01 09:40:05.957786</li>
+                                    <li><strong>Waiting Time:</strong> 4 seconds</li>
+                                    <li><strong>Symptoms:</strong> Shortness of breath</li>
+                                    <li><strong>Medical History:</strong> None</li>
+                                </ul>
+                            </div>
+                            
+                            <div class="detail-section">
+                                <h4>Diagnosis & Treatment</h4>
+                                <ul class="detail-list">
+                                    <li><strong>Diagnosis:</strong> Mild pulmonary congestion</li>
+                                    <li><strong>Diagnosing Doctor:</strong> Emma Johnson</li>
+                                    <li><strong>Diagnosis Time:</strong> 2025-09-01 09:40:05.956460</li>
+                                    <li><strong>Status:</strong> Active</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Vital Signs</h4>
+
+                            <div style="margin-bottom: 10px; padding: 8px; background: white; border-radius: 4px;">
+                                <div style="font-weight: 600; margin-bottom: 5px;">Recorded by Triage Nurse at 2025-09-01 09:39:43.667121</div>
+                                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; font-size: 0.85em;">
+                                    <div>Temp: 37.0°C</div>
+                                    <div>BP: 120.0 mmHg</div>
+                                    <div>HR: 90 bpm</div>
+                                    <div>RR: 22 /min</div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Prescriptions</h4>
+
+                            <div class="test-results">
+                                <strong>Prescription 1:</strong><br>
+                                Diuretic (e.g., Furosemide) to reduce fluid retention, and recommend follow-up if symptoms persist.
+                            </div>
+
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Test Results (4 tests)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('tests8')">Show/Hide Test Details</button>
+                            <div class="hidden-details" id="tests8">
+
+                                <div class="test-results">
+                                    <strong>Test 1:</strong><br>
+                                    ECG recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 2:</strong><br>
+                                    X-Ray recommended by Dr. David Wang
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 3:</strong><br>
+                                    ECG Results: Normal sinus rhythm, no significant ST-T changes observed
+                                </div>
+
+                                <div class="test-results">
+                                    <strong>Test 4:</strong><br>
+                                    X-Ray Results: Mild pulmonary congestion noted, no signs of pneumonia or fractures. Follow-up recommended if symptoms persist.
+                                </div>
+
+                            </div>
+                        </div>
+
+                        <div class="detail-section">
+                            <h4>Medical Notes (7 notes)</h4>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes8')">Show/Hide Notes Details</button>
+                            <div class="hidden-details" id="notes8">
+                                <div class="notes-section">
+
+                                    <div class="note-item">
+                                        <div class="note-header">Triage Nurse - General Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:43.667560</div>
+                                        <div>65-year-old female presenting with shortness of breath, no medical history provided.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:44.673571</div>
+                                        <div>New medical card issued</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Registration Staff - Administrative Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:44.673673</div>
+                                        <div>Insurance verified: True</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:39:55.527581</div>
+                                        <div>ECG completed - Normal sinus rhythm, no significant ST-T changes observed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Lab Technician - Laboratory Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:40:00.585407</div>
+                                        <div>X-Ray completed - Mild pulmonary congestion noted, no signs of pneumonia or fractures. Follow-up recommended if symptoms persist.</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Pharmacist - Pharmacy Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:40:05.957321</div>
+                                        <div>All prescribed medications dispensed</div>
+                                    </div>
+
+                                    <div class="note-item">
+                                        <div class="note-header">Discharge Coordinator - Discharge Note</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">2025-09-01 09:40:05.957795</div>
+                                        <div>Patient discharged after 0h 55m in hospital</div>
+                                    </div>
+
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+        <!-- Operational Details -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('operational')">
+                <h2>Operational Details</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="operational">
+                <div class="detail-grid">
+                    <div class="detail-section">
+                        <h4>Hospital Information</h4>
+                        <ul class="detail-list">
+
+                            <li><strong>Hospital Name:</strong> Twin Digital Medical Center</li>
+                            <li><strong>Total Departments:</strong> 6</li>
+                            <li><strong>Total Doctors:</strong> 6</li>
+                            <li><strong>Operation Hours:</strong> 0.07 hours</li>
+
+                        </ul>
+                    </div>
+                    <div class="detail-section">
+                        <h4>Patient Statistics</h4>
+                        <ul class="detail-list">
+
+                            <li><strong>Total Processed:</strong> 8</li>
+                            <li><strong>Currently Active:</strong> 0</li>
+                            <li><strong>Consultations Completed:</strong> 8</li>
+                            <li><strong>Tests Performed:</strong> 16</li>
+                            <li><strong>Prescriptions Dispensed:</strong> 8</li>
+
+                        </ul>
+                    </div>
+                    <div class="detail-section">
+                        <h4>Operational Metrics</h4>
+                        <ul class="detail-list">
+
+                            <li><strong>Avg. Processing Time:</strong> 45.3 minutes</li>
+                            <li><strong>Patient Satisfaction:</strong> 4.2/5.0</li>
+                            <li><strong>Bed Occupancy Rate:</strong> 78.5%</li>
+                            <li><strong>Equipment Utilization:</strong> 65.2%</li>
+
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Doctor Details -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('doctor-details')">
+                <h2>Detailed Doctor Information</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="doctor-details">
+
+                <div class="detail-section" style="margin-bottom: 15px;">
+                    <h4>Alice Chen - General</h4>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div>
+                            <strong>Basic Info:</strong><br>
+                            Staff ID: D001<br>
+                            Experience: 8 years<br>
+                            Current Status: Available
+                        </div>
+                        <div>
+                            <strong>Daily Metrics:</strong><br>
+                            Patients Seen: 2<br>
+                            Max Capacity: 28<br>
+                            Utilization: 7.1%
+                        </div>
+                        <div>
+                            <strong>Performance:</strong><br>
+                            Total Consultations: 2<br>
+                            Avg Consultation Time: 0.07 min<br>
+                            Specialization Cases: 0
+                        </div>
+                        <div>
+                            <strong>Schedule:</strong><br>
+                            Shift Start: 08:00<br>
+                            Shift End: 16:00<br>
+                            Available: Yes
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section" style="margin-bottom: 15px;">
+                    <h4>Robert Mitchell - General</h4>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div>
+                            <strong>Basic Info:</strong><br>
+                            Staff ID: D002<br>
+                            Experience: 23 years<br>
+                            Current Status: Available
+                        </div>
+                        <div>
+                            <strong>Daily Metrics:</strong><br>
+                            Patients Seen: 3<br>
+                            Max Capacity: 35<br>
+                            Utilization: 8.6%
+                        </div>
+                        <div>
+                            <strong>Performance:</strong><br>
+                            Total Consultations: 3<br>
+                            Avg Consultation Time: 0.07 min<br>
+                            Specialization Cases: 0
+                        </div>
+                        <div>
+                            <strong>Schedule:</strong><br>
+                            Shift Start: 08:00<br>
+                            Shift End: 18:00<br>
+                            Available: Yes
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section" style="margin-bottom: 15px;">
+                    <h4>David Wang - Cardiologist</h4>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div>
+                            <strong>Basic Info:</strong><br>
+                            Staff ID: D003<br>
+                            Experience: 10 years<br>
+                            Current Status: Available
+                        </div>
+                        <div>
+                            <strong>Daily Metrics:</strong><br>
+                            Patients Seen: 3<br>
+                            Max Capacity: 16<br>
+                            Utilization: 18.8%
+                        </div>
+                        <div>
+                            <strong>Performance:</strong><br>
+                            Total Consultations: 3<br>
+                            Avg Consultation Time: 0.08 min<br>
+                            Specialization Cases: 0
+                        </div>
+                        <div>
+                            <strong>Schedule:</strong><br>
+                            Shift Start: 07:00<br>
+                            Shift End: 15:00<br>
+                            Available: Yes
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section" style="margin-bottom: 15px;">
+                    <h4>Maria Garcia - Dermatologist</h4>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div>
+                            <strong>Basic Info:</strong><br>
+                            Staff ID: D004<br>
+                            Experience: 13 years<br>
+                            Current Status: Available
+                        </div>
+                        <div>
+                            <strong>Daily Metrics:</strong><br>
+                            Patients Seen: 3<br>
+                            Max Capacity: 21<br>
+                            Utilization: 14.3%
+                        </div>
+                        <div>
+                            <strong>Performance:</strong><br>
+                            Total Consultations: 3<br>
+                            Avg Consultation Time: 0.11 min<br>
+                            Specialization Cases: 0
+                        </div>
+                        <div>
+                            <strong>Schedule:</strong><br>
+                            Shift Start: 09:00<br>
+                            Shift End: 19:00<br>
+                            Available: Yes
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section" style="margin-bottom: 15px;">
+                    <h4>Steven Kumar - Neurologist</h4>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div>
+                            <strong>Basic Info:</strong><br>
+                            Staff ID: D005<br>
+                            Experience: 6 years<br>
+                            Current Status: Available
+                        </div>
+                        <div>
+                            <strong>Daily Metrics:</strong><br>
+                            Patients Seen: 2<br>
+                            Max Capacity: 12<br>
+                            Utilization: 16.7%
+                        </div>
+                        <div>
+                            <strong>Performance:</strong><br>
+                            Total Consultations: 2<br>
+                            Avg Consultation Time: 0.10 min<br>
+                            Specialization Cases: 0
+                        </div>
+                        <div>
+                            <strong>Schedule:</strong><br>
+                            Shift Start: 08:00<br>
+                            Shift End: 17:00<br>
+                            Available: Yes
+                        </div>
+                    </div>
+                </div>
+
+                <div class="detail-section" style="margin-bottom: 15px;">
+                    <h4>Emma Johnson - Pediatrician</h4>
+                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+                        <div>
+                            <strong>Basic Info:</strong><br>
+                            Staff ID: D006<br>
+                            Experience: 9 years<br>
+                            Current Status: Available
+                        </div>
+                        <div>
+                            <strong>Daily Metrics:</strong><br>
+                            Patients Seen: 3<br>
+                            Max Capacity: 23<br>
+                            Utilization: 13.0%
+                        </div>
+                        <div>
+                            <strong>Performance:</strong><br>
+                            Total Consultations: 3<br>
+                            Avg Consultation Time: 0.10 min<br>
+                            Specialization Cases: 0
+                        </div>
+                        <div>
+                            <strong>Schedule:</strong><br>
+                            Shift Start: 08:00<br>
+                            Shift End: 16:00<br>
+                            Available: Yes
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- System Metadata -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('metadata')">
+                <h2>Simulation Metadata</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="metadata">
+                <table class="summary-table">
+                    <tr>
+                        <th>Parameter</th>
+                        <th>Value</th>
+                    </tr>
+                    <tr>
+                        <td>Export Time</td>
+                        <td>2025-09-01T09:40:05.959079</td>
+                    </tr>
+                    <tr>
+                        <td>Hospital Name</td>
+                        <td>Twin Digital Medical Center</td>
+                    </tr>
+                    <tr>
+                        <td>Total Patients</td>
+                        <td>8</td>
+                    </tr>
+                    <tr>
+                        <td>Total Doctors</td>
+                        <td>6</td>
+                    </tr>
+                    <tr>
+                        <td>Simulation Duration</td>
+                        <td>0.0669 hours</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; padding: 20px; color: #6c757d; font-size: 0.9em; background: white; border-radius: 8px; margin-top: 20px;">
+            <p>Hospital Simulation System Report | Generated: 2025-09-01 09:50:21</p>
+        </div>
+    </div>
+
+    <script>
+        function toggleSection(sectionId) {{
+            const content = document.getElementById(sectionId);
+            const header = content.previousElementSibling;
+            const icon = header.querySelector('.toggle-icon');
+            
+            if (content.classList.contains('collapsed')) {{
+                content.classList.remove('collapsed');
+                header.classList.remove('collapsed');
+                icon.style.transform = 'rotate(0deg)';
+            }} else {{
+                content.classList.add('collapsed');
+                header.classList.add('collapsed');
+                icon.style.transform = 'rotate(-90deg)';
+            }}
+        }}
+
+        function togglePatient(patientId) {{
+            const details = document.getElementById(patientId);
+            const header = details.previousElementSibling;
+            const icon = header.querySelector('.toggle-icon');
+            
+            if (details.classList.contains('expanded')) {{
+                details.classList.remove('expanded');
+                icon.style.transform = 'rotate(-90deg)';
+            }} else {{
+                details.classList.add('expanded');
+                icon.style.transform = 'rotate(0deg)';
+            }}
+        }}
+
+        function toggleDetails(detailId) {{
+            const details = document.getElementById(detailId);
+            if (details.style.display === 'none' || details.style.display === '') {{
+                details.style.display = 'block';
+            }} else {{
+                details.style.display = 'none';
+            }}
+        }}
+
+        // Initialize collapsed state
+        document.addEventListener('DOMContentLoaded', function() {{
+            // Set initial state for section headers
+            const collapsedSections = document.querySelectorAll('.section-content.collapsed');
+            collapsedSections.forEach(section => {{
+                const header = section.previousElementSibling;
+                header.classList.add('collapsed');
+            }});
+        }});
+    </script>
+</body>
+</html>

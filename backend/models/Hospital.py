@@ -9,6 +9,9 @@ from ..config import get_config
 from ..providers.llm import LLM
 from ..prompts.triage_nurse import TRIAGE_NURSE_PROMPT
 from ..prompts.consultation_doctor import CONSULTATION_DOCTOR_PROMPT
+from ..prompts.test_examination import TEST_EXAMINATION_PROMPT
+from ..prompts.test_lab import TEST_LAB_PROMPT
+from ..prompts.follow_up_consultation_doctor import FOLLOW_UP_CONSULTATION_PROMPT
 
 # Configure logger for Hospital class
 logger = logging.getLogger(__name__)
@@ -721,7 +724,6 @@ class Hospital:
             # Simulate consultation time
             time.sleep(2)
             
-            # TODO: Why some patients skip consultation?
             # Determine if tests are needed
             needs_tests = []
             consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
@@ -800,14 +802,30 @@ class Hospital:
         
         patient.update_status(f"Undergoing Examination")
         time.sleep(2)
-        
-        # Generate results
-        findings = random.choice([
-            "Normal findings",
-            "Minor abnormalities noted",
-            "Results consistent with symptoms",
-            "Further monitoring recommended"
-        ])
+
+        examination_prompt = TEST_EXAMINATION_PROMPT.format(
+            test_name=test_name,
+            patient_name=patient.name,
+            patient_age=patient.age,
+            patient_gender=patient.gender,
+            patient_symptoms=patient.symptoms,
+            patient_medical_history=patient.medical_history,
+        )
+
+        llm_response = self.llm.get_completion(prompt=examination_prompt)
+        try:
+            response = llm_response.split("```json")[1].split("```")[0].strip()
+            # Use json.loads() to parse the string into a Python dictionary
+            examination_result = json.loads(response)
+            
+            # Now you can access the data like a normal dictionary
+            findings = examination_result['findings']
+            bill_amount = int(examination_result['bill'])
+
+        except json.JSONDecodeError as e:
+            # This block will run if the string is NOT valid JSON
+            print(f"Error decoding JSON: {e}")
+            print(f"Raw response was: {llm_response}")
         
         report = f"{test_name} Report: {findings}"
         patient.medical_record["tests"].append(report)
@@ -816,12 +834,12 @@ class Hospital:
         print(self._format_console_message("RESULT", f"{test_name} complete - {findings}"))
         
         if device_allocated:
-            self.release_device(test_name.replace(" ", " ").split()[0] + " Machine")
+            self.release_device(test_name + " Machine")
         self.release_room("examination")
         
         # Bill for examination
-        bill_id = self.bill_patient(patient, random.randint(150, 400), f"{test_name} Examination")
-        self.process_payment(bill_id, random.randint(150, 400))
+        bill_id = self.bill_patient(patient, bill_amount, f"{test_name} Examination")
+        self.process_payment(bill_id, bill_amount)
 
     def _simulate_lab_test(self, patient, test_name) -> None:
         """Simulate laboratory test."""
@@ -834,14 +852,30 @@ class Hospital:
         
         patient.update_status(f"Undergoing Lab Test")
         time.sleep(2)
-        
-        # Generate lab results
-        results = random.choice([
-            "All values within normal range",
-            "Slightly elevated markers",
-            "Abnormal findings requiring follow-up",
-            "Results consistent with clinical presentation"
-        ])
+
+        lab_prompt = TEST_LAB_PROMPT.format(
+            test_name=test_name,
+            patient_name=patient.name,
+            patient_age=patient.age,
+            patient_gender=patient.gender,
+            patient_symptoms=patient.symptoms,
+            patient_medical_history=patient.medical_history,
+        )
+
+        llm_response = self.llm.get_completion(prompt=lab_prompt)
+        try:
+            response = llm_response.split("```json")[1].split("```")[0].strip()
+            # Use json.loads() to parse the string into a Python dictionary
+            lab_result = json.loads(response)
+            
+            # Now you can access the data like a normal dictionary
+            results = lab_result['results']
+            bill_amount = int(lab_result['bill'])
+
+        except json.JSONDecodeError as e:
+            # This block will run if the string is NOT valid JSON
+            print(f"Error decoding JSON: {e}")
+            print(f"Raw response was: {llm_response}")
         
         report = f"{test_name} Results: {results}"
         patient.medical_record["tests"].append(report)
@@ -852,8 +886,8 @@ class Hospital:
         self.release_room("lab")
         
         # Bill for lab test
-        bill_id = self.bill_patient(patient, random.randint(75, 200), f"{test_name} Analysis")
-        self.process_payment(bill_id, random.randint(75, 200))
+        bill_id = self.bill_patient(patient, bill_amount, f"{test_name} Analysis")
+        self.process_payment(bill_id, bill_amount)
 
     def _simulate_follow_up_consultation(self, patient) -> None:
         """Simulate follow-up consultation to review test results."""
@@ -872,21 +906,40 @@ class Hospital:
                     f"Dr. {doctor.name} reviewing test results"))
                 
                 time.sleep(2)
-                
-                # Provide diagnosis based on results
-                diagnosis = random.choice([
-                    "Upper Respiratory Infection",
-                    "Hypertension - Stage 1",
-                    "Type 2 Diabetes (Early)",
-                    "Migraine Disorder",
-                    "Acute Gastroenteritis"
-                ])
-                
-                patient.add_diagnosis(diagnosis, doctor.name)
-                
-                # Prescribe treatment
-                prescription = f"Treatment plan for {diagnosis}"
-                patient.medical_record["prescriptions"].append(prescription)
+
+                follow_up_consultation_prompt = FOLLOW_UP_CONSULTATION_PROMPT.format(
+                    doctor_name=doctor.name,
+                    doctor_specialty=doctor.specialty,
+                    doctor_years_experience=doctor.years_experience,
+                    patient_name=patient.name,
+                    patient_age=patient.age,
+                    patient_gender=patient.gender,
+                    patient_symptoms=patient.symptoms,
+                    patient_medical_history=patient.medical_history,
+                    consultation_history=patient.consultation_history,
+                    medical_record=patient.medical_record,
+                )
+
+                llm_response = self.llm.get_completion(prompt=follow_up_consultation_prompt)
+                try:
+                    response = llm_response.split("```json")[1].split("```")[0].strip()
+                    # Use json.loads() to parse the string into a Python dictionary
+                    follow_up_consultation_result = json.loads(response)
+
+                    diagnosis = follow_up_consultation_result.get("diagnosis")
+                    patient.add_diagnosis(diagnosis, doctor.name)
+                    prescription = follow_up_consultation_result.get("prescription")
+                    patient.medical_record["prescriptions"].append(prescription)
+
+                    print(self._format_console_message("DIAGNOSIS", 
+                        f"Diagnosed: {diagnosis}"))
+                    print(self._format_console_message("PRESCRIPTION", 
+                        f"Prescribed: {prescription}"))
+
+                except json.JSONDecodeError as e:
+                    # This block will run if the string is NOT valid JSON
+                    print(f"Error decoding JSON: {e}")
+                    print(f"Raw response was: {llm_response}")    
                 
                 print(self._format_console_message("DIAGNOSIS", f"Final diagnosis: {diagnosis}"))
                 print(self._format_console_message("TREATMENT", f"Treatment prescribed"))
