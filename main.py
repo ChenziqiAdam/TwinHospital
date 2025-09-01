@@ -3,29 +3,31 @@ import json
 import random
 import time
 import logging
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import our classes
 from backend.config import load_config, get_config
 from backend.models.Patient import Patient
 from backend.models.Doctor import Doctor
-from backend.models.Hospital import Hospital
+from backend.models.Hospital import ThreadSafeHospital
 
 def setup_logging():
-    """Setup comprehensive logging system."""
+    """Setup comprehensive logging system with thread safety."""
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
-    # Create formatters
+    # Create formatters with thread information
     detailed_formatter = logging.Formatter(
-        '[%(asctime)s] [%(levelname)8s] [%(name)s] %(message)s',
+        '[%(asctime)s] [%(levelname)8s] [%(threadName)-15s] [%(name)s] %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
     simple_formatter = logging.Formatter(
-        '[%(asctime)s] %(levelname)s: %(message)s',
+        '[%(asctime)s] [%(threadName)-10s] %(levelname)s: %(message)s',
         datefmt='%H:%M:%S'
     )
     
@@ -33,10 +35,14 @@ def setup_logging():
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
     
+    # Clear any existing handlers
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+    
     # File handler for detailed logs
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     file_handler = logging.FileHandler(
-        log_dir / f'hospital_simulation_{timestamp}.log',
+        log_dir / f'hospital_simulation_threaded_{timestamp}.log',
         encoding='utf-8'
     )
     file_handler.setLevel(logging.DEBUG)
@@ -51,7 +57,7 @@ def setup_logging():
     root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
     
-    # Setup specific loggers
+    # Setup specific loggers with thread-safe settings
     logging.getLogger('Patient').setLevel(logging.INFO)
     logging.getLogger('Doctor').setLevel(logging.INFO)
     logging.getLogger('Hospital').setLevel(logging.INFO)
@@ -61,25 +67,21 @@ def setup_logging():
 def generate_random_patients(count: int = None) -> List[Patient]:
     """
     Generate random patients using configuration settings.
-    
-    Args:
-        count (int, optional): Number of patients to generate. Uses config if not provided.
-        
-    Returns:
-        List[Patient]: List of generated patients.
+    Enhanced for threading with more diverse patient profiles.
     """
     config = get_config()
     
     if count is None:
         count = config.patient_data.number_of_patients
     
-    # Sample data for patient generation
+    # Enhanced patient data for more realistic simulation
     first_names = [
         "James", "Mary", "John", "Patricia", "Robert", "Jennifer", "Michael", "Linda",
         "William", "Elizabeth", "David", "Barbara", "Richard", "Susan", "Joseph", "Jessica",
         "Thomas", "Sarah", "Charles", "Karen", "Christopher", "Nancy", "Daniel", "Lisa",
         "Matthew", "Betty", "Anthony", "Helen", "Mark", "Sandra", "Donald", "Donna",
-        "Steven", "Carol", "Paul", "Ruth", "Andrew", "Sharon", "Joshua", "Michelle"
+        "Steven", "Carol", "Paul", "Ruth", "Andrew", "Sharon", "Joshua", "Michelle",
+        "Emma", "Olivia", "Ava", "Isabella", "Sophia", "Charlotte", "Mia", "Amelia"
     ]
     
     last_names = [
@@ -90,11 +92,25 @@ def generate_random_patients(count: int = None) -> List[Patient]:
         "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores"
     ]
     
+    # More diverse symptoms for better testing
+    possible_symptoms = [
+        "Fever", "Cough", "Shortness of breath", "Headache", "Nausea", "Dizziness",
+        "Fatigue", "Chest pain", "Abdominal pain", "Back pain", "Sore throat",
+        "Runny nose", "Muscle aches", "Joint pain", "Rash", "Insomnia", "Anxiety",
+        "Heart palpitations", "Blurred vision", "Numbness", "Swelling", "Constipation"
+    ]
+    
+    possible_conditions = [
+        "Diabetes", "Hypertension", "Asthma", "Allergies", "Heart Disease",
+        "Arthritis", "Depression", "Anxiety", "Chronic Pain", "High Cholesterol",
+        "Thyroid Disease", "Kidney Disease", "COPD", "Osteoporosis"
+    ]
+    
     patients = []
     used_ids = set()
     
     logger = logging.getLogger(__name__)
-    logger.info(f"Generating {count} random patients using configuration")
+    logger.info(f"Generating {count} random patients for threaded simulation")
     
     for i in range(count):
         # Generate unique patient ID
@@ -113,26 +129,19 @@ def generate_random_patients(count: int = None) -> List[Patient]:
         gender = random.choice(["Male", "Female", "Other"])
         
         # Generate contact information
-        area_codes = ["602", "623", "480", "520", "928"]  # Arizona area codes
+        area_codes = ["602", "623", "480", "520", "928"]
         phone = f"({random.choice(area_codes)}) {random.randint(200,999)}-{random.randint(1000,9999)}"
         
-        # Assign insurance (70% have insurance)
-        insurance = False if random.random() > 0.7 else True
-
-        # Generate symptoms (1-3 random symptoms)
-        possible_symptoms = [
-            "Fever", "Cough", "Shortness of breath", "Headache", "Nausea", "Dizziness",
-            "Fatigue", "Chest pain", "Abdominal pain", "Back pain", "Sore throat",
-            "Runny nose", "Muscle aches", "Joint pain", "Rash"
-        ]
-        symptoms = random.sample(possible_symptoms, k=random.randint(1, 3))
-
-        # Generate medical history (0-2 random conditions)
-        possible_conditions = [
-            "Diabetes", "Hypertension", "Asthma", "Allergies", "Heart Disease",
-            "Arthritis", "Depression", "Anxiety", "Chronic Pain"
-        ]
-        medical_history = random.sample(possible_conditions, k=random.randint(0, 2))
+        # Insurance assignment (75% have insurance for more realistic simulation)
+        insurance = True if random.random() < 0.75 else False
+        
+        # Generate symptoms (1-4 random symptoms, weighted towards fewer symptoms)
+        num_symptoms = random.choices([1, 2, 3, 4], weights=[40, 35, 20, 5])[0]
+        symptoms = random.sample(possible_symptoms, k=num_symptoms)
+        
+        # Generate medical history (0-3 random conditions)
+        num_conditions = random.choices([0, 1, 2, 3], weights=[30, 40, 25, 5])[0]
+        medical_history = random.sample(possible_conditions, k=num_conditions)
         
         # Create patient
         patient = Patient(
@@ -146,36 +155,46 @@ def generate_random_patients(count: int = None) -> List[Patient]:
             medical_history=medical_history
         )
         
-        # Randomly assign medical card (80% already have one)
-        if random.random() > 0.2:
+        # Medical card assignment (85% already have one)
+        if random.random() < 0.85:
             patient.has_medical_card = True
         
-        # Set random arrival time within the last hour for realism
-        arrival_offset = random.randint(-60, 0)  # 0 to 60 minutes ago
+        # Stagger arrival times for more realistic concurrent simulation
+        arrival_offset = random.randint(-120, 30)  # Arrivals spread over 2.5 hours
         patient.arrival_time = datetime.now() + timedelta(minutes=arrival_offset)
         
         patients.append(patient)
     
-    logger.info(f"Successfully generated {len(patients)} patients")
+    logger.info(f"Successfully generated {len(patients)} patients with varied arrival times")
     return patients
 
 def generate_doctors_from_config() -> List[Doctor]:
-    """
-    Generate doctors based on configuration settings.
-    
-    Returns:
-        List[Doctor]: List of generated doctors.
-    """
+    """Generate doctors based on configuration with enhanced threading support."""
     config = get_config()
     logger = logging.getLogger(__name__)
     
-    # Doctor names by specialty for realism
+    # Enhanced doctor names for more realistic simulation
     doctor_names = {
-        "General": ["Alice Chen", "Robert Mitchell", "Sarah Johnson", "Michael Brown"],
-        "Cardiologist": ["David Wang", "Emily Rodriguez", "James Wilson", "Lisa Thompson"],
-        "Dermatologist": ["Maria Garcia", "Thomas Anderson", "Jennifer Lee", "Christopher Davis"],
-        "Neurologist": ["Steven Kumar", "Rachel Green", "Andrew Martinez", "Diana Foster"],
-        "Pediatrician": ["Emma Johnson", "Daniel Kim", "Olivia Smith", "Matthew Taylor"]
+        "General": [
+            "Alice Chen", "Robert Mitchell", "Sarah Johnson", "Michael Brown",
+            "Laura Wilson", "David Thompson", "Maria Rodriguez", "Kevin Lee"
+        ],
+        "Cardiologist": [
+            "David Wang", "Emily Rodriguez", "James Wilson", "Lisa Thompson",
+            "Steven Kim", "Rachel Martinez", "Andrew Foster", "Diana Chen"
+        ],
+        "Dermatologist": [
+            "Maria Garcia", "Thomas Anderson", "Jennifer Lee", "Christopher Davis",
+            "Samantha Taylor", "Jonathan Miller", "Rebecca White", "Marcus Johnson"
+        ],
+        "Neurologist": [
+            "Steven Kumar", "Rachel Green", "Andrew Martinez", "Diana Foster",
+            "Alexander Petrov", "Catherine Moore", "Benjamin Clark", "Victoria Adams"
+        ],
+        "Pediatrician": [
+            "Emma Johnson", "Daniel Kim", "Olivia Smith", "Matthew Taylor",
+            "Isabella Garcia", "Lucas Brown", "Charlotte Wilson", "Ethan Davis"
+        ]
     }
     
     specialties = config.get_specialties()
@@ -184,17 +203,14 @@ def generate_doctors_from_config() -> List[Doctor]:
     doctors = []
     staff_id_counter = 1
     
-    logger.info(f"Generating doctors for specialties: {specialties}")
+    logger.info(f"Generating doctors for threaded simulation: {specialties}")
     
     for specialty in specialties:
-        # Get number of doctors needed for this specialty
         doctors_needed = doctors_per_department.get(specialty, 1)
-        
-        # Get available names for this specialty
         available_names = doctor_names.get(specialty, doctor_names["General"])
         
         for i in range(doctors_needed):
-            # Select name (with fallback if we run out)
+            # Select name with fallback
             if i < len(available_names):
                 name = available_names[i]
             else:
@@ -202,18 +218,17 @@ def generate_doctors_from_config() -> List[Doctor]:
             
             # Generate doctor attributes
             staff_id = f"D{staff_id_counter:03d}"
-            experience = random.randint(2, 25)
-
-            age = random.randint(18, 85)
+            experience = random.randint(3, 25)
+            age = random.randint(28, 65)
             gender = random.choice(["Male", "Female", "Other"])
             
-            # Specialty-specific patient capacity
+            # Adjust capacity for concurrent operations
             if specialty in ["Emergency", "General"]:
-                max_patients = random.randint(25, 35)
+                max_patients = random.randint(20, 30)  # Slightly reduced for threading
             elif specialty in ["Cardiologist", "Neurologist"]:
-                max_patients = random.randint(12, 20)  # More complex cases
+                max_patients = random.randint(10, 18)
             else:
-                max_patients = random.randint(15, 25)
+                max_patients = random.randint(12, 22)
             
             doctor = Doctor(
                 name=name,
@@ -225,12 +240,14 @@ def generate_doctors_from_config() -> List[Doctor]:
                 max_patients_per_day=max_patients
             )
             
-            # Set realistic shift hours
-            shift_start = datetime.now().replace(hour=random.choice([7, 8, 9]), minute=0, second=0)
-            shift_end = shift_start + timedelta(hours=random.choice([8, 9, 10]))
+            # Set realistic shift hours with some overlap for better coverage
+            start_hour = random.choice([7, 8, 9])
+            shift_start = datetime.now().replace(hour=start_hour, minute=0, second=0)
+            shift_duration = random.choice([8, 9, 10])
+            shift_end = shift_start + timedelta(hours=shift_duration)
             doctor.set_shift(shift_start, shift_end)
             
-            # Add breaks
+            # Add breaks (50% chance)
             if random.choice([True, False]):
                 break_start = shift_start + timedelta(hours=random.randint(3, 5))
                 break_end = break_start + timedelta(minutes=random.choice([15, 30, 45]))
@@ -239,236 +256,365 @@ def generate_doctors_from_config() -> List[Doctor]:
             doctors.append(doctor)
             staff_id_counter += 1
     
-    logger.info(f"Successfully generated {len(doctors)} doctors")
+    logger.info(f"Generated {len(doctors)} doctors for threaded hospital operations")
     return doctors
 
-def setup_hospital_from_config() -> Hospital:
-    """
-    Setup hospital using configuration settings.
-    
-    Returns:
-        Hospital: Configured hospital instance.
-    """
+def setup_hospital_from_config() -> ThreadSafeHospital:
+    """Setup thread-safe hospital using configuration settings."""
     config = get_config()
     logger = logging.getLogger(__name__)
     
     # Generate doctors
     doctors = generate_doctors_from_config()
     
-    # Create hospital
-    hospital = Hospital("Twin Digital Medical Center", doctors)
+    # Create thread-safe hospital
+    hospital = ThreadSafeHospital("Twin Digital Medical Center", doctors)
     
-    logger.info(f"Hospital setup complete with {len(doctors)} doctors")
+    logger.info(f"Thread-safe hospital setup complete with {len(doctors)} doctors")
     return hospital
 
-def run_simulation(hospital: Hospital, patients: List[Patient], verbose: bool = True) -> None:
+def run_simulation_with_mode(hospital: ThreadSafeHospital, patients: List[Patient], 
+                           mode: str = "threaded", max_workers: int = None, verbose: bool = True) -> Dict[str, Any]:
     """
-    Run comprehensive hospital simulation.
+    Run simulation with choice between sequential or threaded mode.
     
     Args:
-        hospital (Hospital): The hospital instance.
+        hospital (ThreadSafeHospital): The hospital instance.
+        patients (List[Patient]): List of patients to process.
+        mode (str): Either "sequential" or "threaded".
+        max_workers (int): Maximum concurrent workers (threaded mode only).
+        verbose (bool): Whether to show detailed output.
+        
+    Returns:
+        Dict[str, Any]: Simulation results.
+    """
+    if mode == "sequential":
+        return run_sequential_simulation(hospital, patients, verbose)
+    elif mode == "threaded":
+        return run_threaded_simulation(hospital, patients, max_workers, verbose)
+    else:
+        raise ValueError("Mode must be either 'sequential' or 'threaded'")
+
+def run_sequential_simulation(hospital: ThreadSafeHospital, patients: List[Patient], verbose: bool = True) -> Dict[str, Any]:
+    """
+    Run sequential simulation for comparison or backward compatibility.
+    
+    Args:
+        hospital (ThreadSafeHospital): The hospital instance.
         patients (List[Patient]): List of patients to process.
         verbose (bool): Whether to show detailed output.
+        
+    Returns:
+        Dict[str, Any]: Simulation results.
     """
     logger = logging.getLogger(__name__)
     simulation_start = datetime.now()
     
     if verbose:
         print("\n" + "="*80)
-        print(f"{'HOSPITAL SIMULATION STARTING':^80}")
+        print(f"{'SEQUENTIAL HOSPITAL SIMULATION':^80}")
+        print(f"{'(For Comparison/Backward Compatibility)':^80}")
+        print("="*80)
+        print(f"Processing {len(patients)} patients sequentially...")
+    
+    # Process patients one by one (original behavior)
+    processed_patients = 0
+    successful_visits = 0
+    visit_summaries = []
+    
+    for i, patient in enumerate(sorted(patients, key=lambda p: p.priority)):
+        try:
+            if verbose:
+                print(f"\nProcessing patient {i+1}/{len(patients)}: {patient.name}")
+            
+            # Use the backward-compatible method
+            hospital.simulate_patient_visit(patient)
+            successful_visits += 1
+            
+            # Create visit summary for consistency
+            visit_summary = {
+                "patient_id": patient.id,
+                "patient_name": patient.name,
+                "success": True,
+                "mode": "sequential",
+                "stages_completed": ["admission", "triage", "registration", "consultation", "discharge"]
+            }
+            visit_summaries.append(visit_summary)
+            
+        except Exception as e:
+            logger.error(f"Error processing patient {patient.name}: {str(e)}")
+            visit_summary = {
+                "patient_id": patient.id,
+                "patient_name": patient.name,
+                "success": False,
+                "errors": [str(e)],
+                "mode": "sequential"
+            }
+            visit_summaries.append(visit_summary)
+        
+        processed_patients += 1
+        
+        # Brief pause between patients
+        if i < len(patients) - 1:
+            time.sleep(0.5)
+    
+    simulation_end = datetime.now()
+    simulation_duration = simulation_end - simulation_start
+    
+    # Create results in same format as threaded simulation
+    simulation_results = {
+        "simulation_metadata": {
+            "start_time": simulation_start,
+            "end_time": simulation_end,
+            "duration": simulation_duration,
+            "duration_minutes": simulation_duration.total_seconds() / 60,
+            "hospital_name": hospital.name,
+            "threading_mode": "Sequential",
+            "max_workers": 1
+        },
+        "patient_results": visit_summaries,
+        "hospital_statistics": hospital.generate_hospital_statistics(),
+        "concurrent_statistics": {
+            "concurrent_metrics": {
+                "total_patients": len(patients),
+                "successful_visits": successful_visits,
+                "failed_visits": len(patients) - successful_visits,
+                "success_rate": f"{(successful_visits / len(patients) * 100):.1f}%",
+                "average_visit_duration_minutes": simulation_duration.total_seconds() / 60 / len(patients)
+            }
+        }
+    }
+    
+    if verbose:
+        print(f"\nSequential simulation completed in {simulation_duration}")
+        print(f"Processed: {processed_patients}/{len(patients)} patients")
+        print(f"Success rate: {(successful_visits/processed_patients*100):.1f}%")
+    
+    return simulation_results
+
+def run_threaded_simulation(hospital: ThreadSafeHospital, patients: List[Patient], 
+                          max_workers: int = None, verbose: bool = True) -> Dict[str, Any]:
+    """
+    Run comprehensive threaded hospital simulation.
+    
+    Args:
+        hospital (ThreadSafeHospital): The hospital instance.
+        patients (List[Patient]): List of patients to process.
+        max_workers (int): Maximum concurrent workers.
+        verbose (bool): Whether to show detailed output.
+        
+    Returns:
+        Dict[str, Any]: Comprehensive simulation results.
+    """
+    logger = logging.getLogger(__name__)
+    simulation_start = datetime.now()
+    
+    if verbose:
+        print("\n" + "="*80)
+        print(f"{'THREADED HOSPITAL SIMULATION STARTING':^80}")
         print(f"{'Simulation Time: ' + simulation_start.strftime('%Y-%m-%d %H:%M:%S'):^80}")
         print("="*80)
         print(f"Hospital: {hospital.name}")
         print(f"Doctors: {len(hospital.doctors)}")
         print(f"Patients: {len(patients)}")
         print(f"Departments: {len(hospital.departments)}")
+        print(f"Max Concurrent Workers: {max_workers or hospital.max_concurrent_patients}")
         print("="*80 + "\n")
     
-    logger.info(f"Starting simulation with {len(patients)} patients")
+    logger.info(f"Starting threaded simulation with {len(patients)} patients and {max_workers or hospital.max_concurrent_patients} workers")
     
-    # Sort patients by priority (higher priority = lower number = processed first)
-    patients.sort(key=lambda p: p.priority)
-    
-    # Process each patient
-    processed_patients = 0
-    successful_visits = 0
-    
-    for i, patient in enumerate(patients):
-        try:
-            if verbose:
-                print(f"\n{'='*20} PATIENT {i+1}/{len(patients)} {'='*20}")
-                print(f"Processing: {patient.name} (Priority: {patient.priority})")
-            
-            hospital.simulate_patient_visit(patient)
-            successful_visits += 1
-            processed_patients += 1
-            
-            # Brief pause between patients for realism
-            if i < len(patients) - 1:
-                time.sleep(0.5)
-                
-        except Exception as e:
-            logger.error(f"Error processing patient {patient.name}: {str(e)}")
-            if verbose:
-                print(f"Error processing patient {patient.name}: {str(e)}")
-            processed_patients += 1
+    # Run concurrent patient processing
+    print(f"Processing {len(patients)} patients concurrently...")
+    visit_summaries = hospital.process_patients_concurrently(patients, max_workers)
     
     simulation_end = datetime.now()
     simulation_duration = simulation_end - simulation_start
     
+    # Generate comprehensive results
+    concurrent_stats = hospital.generate_concurrent_statistics(visit_summaries)
+    hospital_stats = hospital.generate_hospital_statistics()
+    
+    simulation_results = {
+        "simulation_metadata": {
+            "start_time": simulation_start,
+            "end_time": simulation_end,
+            "duration": simulation_duration,
+            "duration_minutes": simulation_duration.total_seconds() / 60,
+            "hospital_name": hospital.name,
+            "threading_mode": "Enabled",
+            "max_workers": max_workers or hospital.max_concurrent_patients
+        },
+        "patient_results": visit_summaries,
+        "concurrent_statistics": concurrent_stats,
+        "hospital_statistics": hospital_stats
+    }
+    
     if verbose:
         print("\n" + "="*80)
-        print(f"{'SIMULATION COMPLETED':^80}")
+        print(f"{'THREADED SIMULATION COMPLETED':^80}")
         print(f"{'Duration: ' + str(simulation_duration):^80}")
         print("="*80)
-        print(f"Patients Processed: {processed_patients}/{len(patients)}")
+        
+        # Display concurrent processing results
+        successful_visits = len([v for v in visit_summaries if v.get("success", False)])
+        failed_visits = len(visit_summaries) - successful_visits
+        success_rate = (successful_visits / len(visit_summaries) * 100) if visit_summaries else 0
+        
+        print(f"Patients Processed: {len(visit_summaries)}")
         print(f"Successful Visits: {successful_visits}")
-        print(f"Success Rate: {(successful_visits/processed_patients*100):.1f}%")
+        print(f"Failed Visits: {failed_visits}")
+        print(f"Success Rate: {success_rate:.1f}%")
+        print(f"Average Visit Duration: {concurrent_stats['concurrent_metrics']['average_visit_duration_minutes']:.1f} minutes")
+        print(f"Total Revenue Generated: {concurrent_stats['concurrent_metrics']['total_revenue']}")
+        print(f"Threads Used: {concurrent_stats['threading_performance']['threads_used']}")
         print("="*80 + "\n")
     
-    logger.info(f"Simulation completed - {processed_patients}/{len(patients)} patients processed in {simulation_duration}")
+    logger.info(f"Threaded simulation completed - {len(visit_summaries)} patients processed in {simulation_duration}")
+    
+    return simulation_results
 
-def display_hospital_statistics(hospital: Hospital) -> None:
+def display_threaded_statistics(hospital: ThreadSafeHospital, simulation_results: Dict[str, Any]) -> None:
     """
-    Display comprehensive hospital statistics.
+    Display comprehensive statistics for threaded simulation.
     
     Args:
-        hospital (Hospital): The hospital instance.
+        hospital (ThreadSafeHospital): The hospital instance.
+        simulation_results (Dict[str, Any]): Results from the simulation.
     """
     print("\n" + "="*80)
-    print(f"{'HOSPITAL OPERATIONS STATISTICS':^80}")
+    print(f"{'THREADED HOSPITAL OPERATIONS STATISTICS':^80}")
     print("="*80)
     
-    stats = hospital.generate_hospital_statistics()
+    concurrent_stats = simulation_results["concurrent_statistics"]
+    hospital_stats = simulation_results["hospital_statistics"]
     
-    # Hospital Overview
-    print(f"\n{'HOSPITAL OVERVIEW':^50}")
+    # Simulation Overview
+    print(f"\n{'SIMULATION OVERVIEW':^50}")
     print("-" * 50)
-    print(f"Hospital Name: {stats['hospital_info']['name']}")
-    print(f"Operation Time: {stats['hospital_info']['operation_hours']:.1f} hours")
-    print(f"Total Departments: {stats['hospital_info']['departments']}")
-    print(f"Medical Staff: {stats['hospital_info']['total_doctors']} doctors")
+    meta = simulation_results["simulation_metadata"]
+    print(f"Hospital Name: {meta['hospital_name']}")
+    print(f"Threading Mode: {meta['threading_mode']}")
+    print(f"Max Concurrent Workers: {meta['max_workers']}")
+    print(f"Total Duration: {meta['duration_minutes']:.1f} minutes")
+    print(f"Processing Speed: {len(simulation_results['patient_results']) / meta['duration_minutes']:.1f} patients/minute")
     
-    # Patient Statistics
-    print(f"\n{'PATIENT STATISTICS':^50}")
+    # Concurrent Processing Metrics
+    print(f"\n{'CONCURRENT PROCESSING METRICS':^50}")
     print("-" * 50)
-    print(f"Total Patients Processed: {stats['patient_statistics']['total_processed']}")
-    print(f"Currently Active: {stats['patient_statistics']['currently_active']}")
-    print(f"Consultations Completed: {stats['patient_statistics']['consultations_completed']}")
-    print(f"Medical Tests Performed: {stats['patient_statistics']['tests_performed']}")
-    print(f"Prescriptions Dispensed: {stats['patient_statistics']['prescriptions_dispensed']}")
+    concurrent_metrics = concurrent_stats["concurrent_metrics"]
+    for metric, value in concurrent_metrics.items():
+        metric_name = metric.replace('_', ' ').title()
+        print(f"{metric_name:>30}: {value}")
+    
+    # Threading Performance
+    print(f"\n{'THREADING PERFORMANCE':^50}")
+    print("-" * 50)
+    threading_perf = concurrent_stats["threading_performance"]
+    for metric, value in threading_perf.items():
+        metric_name = metric.replace('_', ' ').title()
+        print(f"{metric_name:>30}: {value}")
+    
+    # Stage Completion Rates
+    print(f"\n{'STAGE COMPLETION RATES':^50}")
+    print("-" * 50)
+    stage_rates = concurrent_stats["stage_completion_rates"]
+    for stage, rate in stage_rates.items():
+        stage_name = stage.replace('_', ' ').title()
+        print(f"{stage_name:>30}: {rate}")
+    
+    # Resource Utilization (Thread-Safe)
+    print(f"\n{'RESOURCE UTILIZATION':^50}")
+    print("-" * 50)
+    room_stats = hospital_stats['resource_utilization']['rooms']
+    for room_type, data in room_stats.items():
+        print(f"{room_type.title():>15}: {data['occupied']}/{data['total']} ({data['utilization_rate']})")
+    
+    # Doctor Performance in Threaded Environment
+    print(f"\n{'DOCTOR PERFORMANCE (THREADED)':^50}")
+    print("-" * 50)
+    print(f"{'Doctor':<20} {'Specialty':<15} {'Patients':<10} {'Utilization':<12} {'Status'}")
+    print("-" * 70)
+    doctor_stats = hospital_stats['resource_utilization']['doctors']
+    for doc in doctor_stats:
+        print(f"{doc['name']:<20} {doc['specialty']:<15} {doc['patients_seen']:<10} "
+              f"{doc['utilization']:<12} {doc['status']}")
     
     # Financial Summary
     print(f"\n{'FINANCIAL SUMMARY':^50}")
     print("-" * 50)
-    print(f"Total Revenue: {stats['financial_summary']['total_revenue']}")
-    print(f"Total Expenses: {stats['financial_summary']['total_expenses']}")
-    print(f"Net Profit: {stats['financial_summary']['profit']}")
-    print(f"Bills Issued: {stats['financial_summary']['bills_issued']}")
-    print(f"Payment Rate: {stats['financial_summary']['payment_rate']}")
-    
-    # Room Utilization
-    print(f"\n{'ROOM UTILIZATION':^50}")
-    print("-" * 50)
-    for room_type, data in stats['resource_utilization']['rooms'].items():
-        print(f"{room_type.title():>15}: {data['occupied']}/{data['total']} ({data['utilization_rate']})")
-    
-    # Doctor Performance
-    print(f"\n{'DOCTOR UTILIZATION':^50}")
-    print("-" * 50)
-    print(f"{'Doctor':<20} {'Specialty':<15} {'Patients':<10} {'Utilization':<12} {'Status'}")
-    print("-" * 70)
-    for doc in stats['resource_utilization']['doctors']:
-        print(f"{doc['name']:<20} {doc['specialty']:<15} {doc['patients_seen']:<10} "
-              f"{doc['utilization']:<12} {doc['status']}")
-    
-    # Operational Metrics
-    print(f"\n{'OPERATIONAL METRICS':^50}")
-    print("-" * 50)
-    for metric, value in stats['operational_metrics'].items():
+    financial = hospital_stats['financial_summary']
+    for metric, value in financial.items():
         metric_name = metric.replace('_', ' ').title()
         print(f"{metric_name:>30}: {value}")
     
     print("\n" + "="*80)
 
-def display_patient_records(patients: List[Patient], detailed: bool = False) -> None:
+def display_patient_visit_outcomes(visit_summaries: List[Dict[str, Any]], detailed: bool = False) -> None:
     """
-    Display patient medical records with optional detailed view.
+    Display patient visit outcomes from threaded processing.
     
     Args:
-        patients (List[Patient]): List of patients.
-        detailed (bool): Whether to show detailed medical records.
+        visit_summaries (List[Dict[str, Any]]): List of visit outcome summaries.
+        detailed (bool): Whether to show detailed information.
     """
     print("\n" + "="*80)
-    print(f"{'PATIENT MEDICAL RECORDS':^80}")
+    print(f"{'PATIENT VISIT OUTCOMES (THREADED)':^80}")
     print("="*80)
     
-    for i, patient in enumerate(patients):
-        print(f"\n{'='*15} RECORD {i+1}/{len(patients)} {'='*15}")
+    successful_visits = [v for v in visit_summaries if v.get("success", False)]
+    failed_visits = [v for v in visit_summaries if not v.get("success", False)]
+    
+    print(f"\nSUMMARY:")
+    print(f"Total Visits: {len(visit_summaries)}")
+    print(f"Successful: {len(successful_visits)}")
+    print(f"Failed: {len(failed_visits)}")
+    
+    if detailed and successful_visits:
+        print(f"\n{'SUCCESSFUL VISITS DETAILS':^50}")
+        print("-" * 60)
+        print(f"{'Patient':<20} {'Thread':<15} {'Duration':<10} {'Stages':<15} {'Cost'}")
+        print("-" * 60)
         
-        # Basic patient information
-        print(f"Patient: {patient.name} (ID: {patient.id})")
-        print(f"Age: {patient.age}, Gender: {patient.gender}")
-        print(f"Insurance: {patient.insurance or 'None'}")
-        print(f"Status: {patient.status}")
+        for visit in successful_visits[:10]:  # Show first 10 for brevity
+            stages_count = len(visit.get("stages_completed", []))
+            duration = visit.get("duration_minutes", 0)
+            cost = visit.get("total_cost", 0)
+            thread_id = visit.get("thread_id", "Unknown")[:12]
+            
+            print(f"{visit['patient_name']:<20} {thread_id:<15} {duration:<10.1f} "
+                  f"{stages_count:<15} ${cost}")
         
-        # Visit timing
-        if patient.discharge_time:
-            duration = patient.discharge_time - patient.arrival_time
-            hours, remainder = divmod(duration.total_seconds(), 3600)
-            minutes, _ = divmod(remainder, 60)
-            print(f"Hospital Stay: {int(hours)}h {int(minutes)}m")
-        else:
-            print("Hospital Stay: In progress")
+        if len(successful_visits) > 10:
+            print(f"... and {len(successful_visits) - 10} more successful visits")
+    
+    if failed_visits:
+        print(f"\n{'FAILED VISITS':^50}")
+        print("-" * 50)
+        for visit in failed_visits:
+            errors = ', '.join(visit.get("errors", ["Unknown error"]))
+            print(f"• {visit['patient_name']}: {errors}")
+    
+    # Threading efficiency analysis
+    if visit_summaries:
+        thread_usage = {}
+        for visit in visit_summaries:
+            thread_id = visit.get("thread_id", "Unknown")
+            thread_usage[thread_id] = thread_usage.get(thread_id, 0) + 1
         
-        if detailed:
-            # Detailed medical information
-            medical_record = patient.medical_record
-            
-            # Diagnoses
-            if medical_record.get("diagnoses"):
-                print("\nDiagnoses:")
-                for diagnosis in medical_record["diagnoses"]:
-                    print(f"  • {diagnosis['diagnosis']} (Dr. {diagnosis['doctor']})")
-            
-            # Tests performed
-            if medical_record.get("tests"):
-                print(f"\nTests Performed ({len(medical_record['tests'])}):")
-                for test in medical_record["tests"][-3:]:  # Show last 3 tests
-                    print(f"  • {test}")
-                if len(medical_record['tests']) > 3:
-                    print(f"  ... and {len(medical_record['tests']) - 3} more")
-            
-            # Prescriptions
-            if medical_record.get("prescriptions"):
-                print(f"\nPrescriptions ({len(medical_record['prescriptions'])}):")
-                for prescription in medical_record["prescriptions"]:
-                    print(f"  • {prescription}")
-            
-            # Latest vitals
-            if medical_record.get("vitals"):
-                latest_vitals = medical_record["vitals"][-1]
-                print(f"\nLatest Vitals:")
-                print(f"  Temperature: {latest_vitals['temperature']}°C")
-                print(f"  Blood Pressure: {latest_vitals['blood_pressure']}")
-                print(f"  Heart Rate: {latest_vitals['heart_rate']} bpm")
-                print(f"  Respiratory Rate: {latest_vitals['respiratory_rate']}/min")
-        
-        else:
-            # Summary information
-            diagnoses_count = len(patient.medical_record.get("diagnoses", []))
-            tests_count = len(patient.medical_record.get("tests", []))
-            prescriptions_count = len(patient.medical_record.get("prescriptions", []))
-            
-            print(f"Medical Summary: {diagnoses_count} diagnoses, {tests_count} tests, {prescriptions_count} prescriptions")
+        print(f"\n{'THREAD UTILIZATION':^50}")
+        print("-" * 50)
+        for thread_id, count in sorted(thread_usage.items()):
+            print(f"Thread {thread_id}: {count} patients")
 
-def export_simulation_data(hospital: Hospital, patients: List[Patient], filename: str = None) -> str:
+def export_threaded_simulation_data(hospital: ThreadSafeHospital, simulation_results: Dict[str, Any], 
+                                   patients: List[Patient], filename: str = None) -> str:
     """
-    Export simulation data to JSON file.
+    Export threaded simulation data to JSON file with original format compatibility.
     
     Args:
-        hospital (Hospital): The hospital instance.
-        patients (List[Patient]): List of patients.
+        hospital (ThreadSafeHospital): The hospital instance.
+        simulation_results (Dict[str, Any]): Complete simulation results.
+        patients (List[Patient]): List of patients for summaries.
         filename (str, optional): Output filename.
         
     Returns:
@@ -476,20 +622,41 @@ def export_simulation_data(hospital: Hospital, patients: List[Patient], filename
     """
     if filename is None:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"hospital_simulation_export_{timestamp}.json"
+        filename = f"threaded_hospital_simulation_{timestamp}.json"
     
-    # Prepare export data
+    # Prepare export data in original format + threading enhancements
     export_data = {
+        # Keep original format for backward compatibility
         "simulation_metadata": {
             "export_time": datetime.now().isoformat(),
             "hospital_name": hospital.name,
             "total_patients": len(patients),
             "total_doctors": len(hospital.doctors),
-            "simulation_duration_hours": (datetime.now() - hospital.operation_start_time).total_seconds() / 3600
+            "simulation_duration_hours": simulation_results["simulation_metadata"]["duration_minutes"] / 60,
+            # Add threading metadata
+            "threading_enabled": True,
+            "max_concurrent_workers": simulation_results["simulation_metadata"]["max_workers"],
+            "simulation_type": "threaded_concurrent"
         },
+        
+        # Keep original hospital statistics format
         "hospital_statistics": hospital.generate_hospital_statistics(),
+        
+        # Keep original patient summaries format
         "patient_summaries": [patient.get_medical_summary() for patient in patients],
-        "doctor_summaries": [doctor.get_daily_summary() for doctor in hospital.doctors]
+        
+        # Keep original doctor summaries format  
+        "doctor_summaries": [doctor.get_daily_summary() for doctor in hospital.doctors],
+        
+        # Add new threading-specific data
+        "threading_analysis": {
+            "concurrent_processing_enabled": True,
+            "max_workers_used": simulation_results["simulation_metadata"]["max_workers"],
+            "resource_contention_logs": len([log for log in hospital.resource_logs if "timeout" in str(log)]),
+            "thread_safety_events": len(hospital.resource_logs),
+            "concurrent_statistics": simulation_results.get("concurrent_statistics", {}),
+            "visit_summaries": simulation_results.get("patient_results", [])
+        }
     }
     
     # Write to file
@@ -497,65 +664,134 @@ def export_simulation_data(hospital: Hospital, patients: List[Patient], filename
     export_path.mkdir(exist_ok=True)
     full_path = export_path / filename
     
+    class DateTimeEncoder(json.JSONEncoder):
+        """Custom JSON encoder for datetime objects."""
+        def default(self, obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            elif isinstance(obj, timedelta):
+                return str(obj)
+            return super().default(obj)
+    
     with open(full_path, 'w', encoding='utf-8') as f:
-        json.dump(export_data, f, indent=2, default=str)
+        json.dump(export_data, f, indent=2, cls=DateTimeEncoder)
     
     logger = logging.getLogger(__name__)
-    logger.info(f"Simulation data exported to {full_path}")
+    logger.info(f"Threaded simulation data exported to {full_path}")
     
     return str(full_path)
 
-def main():
-    """Main function to run the hospital simulation."""
-    print("="*80)
-    print(f"{'TWIN DIGITAL HOSPITAL SYSTEM':^80}")
-    print(f"{'Medical Simulation Platform v2.0':^80}")
+def compare_sequential_vs_threaded(patients: List[Patient], hospital: ThreadSafeHospital) -> None:
+    """
+    Compare performance between sequential and threaded processing.
+    
+    Args:
+        patients (List[Patient]): Patients for comparison.
+        hospital (ThreadSafeHospital): Hospital instance.
+    """
+    print("\n" + "="*80)
+    print(f"{'SEQUENTIAL VS THREADED COMPARISON':^80}")
     print("="*80)
     
-    # Setup logging
+    # Estimate sequential processing time
+    avg_visit_time = 3.5  # minutes per patient (estimated)
+    sequential_estimate = len(patients) * avg_visit_time
+    
+    # Run threaded simulation with timing
+    start_time = datetime.now()
+    visit_summaries = hospital.process_patients_concurrently(patients, max_workers=4)
+    threaded_duration = (datetime.now() - start_time).total_seconds() / 60
+    
+    # Calculate efficiency metrics
+    speedup_factor = sequential_estimate / threaded_duration if threaded_duration > 0 else 0
+    efficiency = speedup_factor / 4 * 100  # Assuming 4 workers
+    
+    print(f"Sequential Processing (Estimated): {sequential_estimate:.1f} minutes")
+    print(f"Threaded Processing (Actual): {threaded_duration:.1f} minutes")
+    print(f"Speedup Factor: {speedup_factor:.2f}x")
+    print(f"Threading Efficiency: {efficiency:.1f}%")
+    print(f"Time Saved: {sequential_estimate - threaded_duration:.1f} minutes")
+    
+    # Resource contention analysis
+    successful_visits = len([v for v in visit_summaries if v.get("success", False)])
+    print(f"\nResource Management:")
+    print(f"Successful Visits: {successful_visits}/{len(patients)}")
+    print(f"Resource Contention Events: {len([log for log in hospital.resource_logs if 'timeout' in str(log)])}")
+    
+    print("\n" + "="*80)
+
+def main():
+    """Enhanced main function for threaded hospital simulation."""
+    print("="*80)
+    print(f"{'TWIN DIGITAL HOSPITAL SYSTEM - THREADED EDITION':^80}")
+    print(f"{'Medical Simulation Platform v2.1 (Thread-Safe)':^80}")
+    print("="*80)
+    
+    # Setup logging with thread support
     logger = setup_logging()
-    logger.info("Starting Twin Digital Hospital System")
+    logger.info("Starting Twin Digital Hospital System - Threaded Edition")
     
     try:
         # Load configuration
         print("Loading system configuration...")
         config = load_config("default.yaml")
-        logger.info(f"Configuration loaded successfully")
+        logger.info("Configuration loaded successfully")
         print(f"✓ Configuration loaded: {config.patient_data.number_of_patients} patients, "
               f"{len(config.get_specialties())} specialties")
         
-        # Setup hospital
-        print("Initializing hospital system...")
+        # Setup thread-safe hospital
+        print("Initializing thread-safe hospital system...")
         hospital = setup_hospital_from_config()
-        print(f"✓ Hospital '{hospital.name}' initialized with {len(hospital.doctors)} doctors")
+        print(f"✓ Thread-safe hospital '{hospital.name}' initialized with {len(hospital.doctors)} doctors")
         
-        # Generate patients
-        print("Generating patient population...")
+        # Generate patients with staggered arrivals
+        print("Generating patient population with realistic arrival patterns...")
         patients = generate_random_patients()
-        print(f"✓ Generated {len(patients)} patients for simulation")
+        print(f"✓ Generated {len(patients)} patients for concurrent processing")
         
-        # Run simulation
-        print("\nStarting medical simulation...")
-        run_simulation(hospital, patients, verbose=True)
+        # Display threading configuration
+        max_workers = min(len(hospital.doctors), 6)  # Limit based on doctors available
+        print(f"✓ Threading configured: {max_workers} concurrent workers")
         
-        # Display results
-        print("Generating comprehensive reports...")
-        display_hospital_statistics(hospital)
-        display_patient_records(patients, detailed=False)
+        # Run simulation (with mode selection)
+        simulation_mode = "threaded"  # Can be changed to "sequential" for comparison
+        print(f"\nStarting {simulation_mode} medical simulation...")
+        simulation_results = run_simulation_with_mode(
+            hospital, patients, mode=simulation_mode, max_workers=max_workers, verbose=True
+        )
+        
+        # Display comprehensive results
+        print("Generating comprehensive threaded reports...")
+        display_threaded_statistics(hospital, simulation_results)
+        display_patient_visit_outcomes(simulation_results["patient_results"], detailed=True)
+        
+        # Performance comparison
+        print("Analyzing threading performance benefits...")
+        # compare_sequential_vs_threaded(patients[:5], hospital)  # Use subset for comparison
         
         # Export data
-        print("\nExporting simulation data...")
-        export_path = export_simulation_data(hospital, patients)
-        print(f"✓ Simulation data exported to: {export_path}")
+        print("\nExporting threaded simulation data...")
+        export_path = export_threaded_simulation_data(hospital, simulation_results, patients)
+        print(f"✓ Threaded simulation data exported to: {export_path}")
         
-        # Final summary
+        # Final summary with threading insights
         print("\n" + "="*80)
-        print(f"{'SIMULATION COMPLETED SUCCESSFULLY':^80}")
-        print(f"{'Check logs folder for detailed logs':^80}")
-        print(f"{'Check exports folder for data export':^80}")
+        print(f"{'THREADED SIMULATION COMPLETED SUCCESSFULLY':^80}")
+        print(f"{'Enhanced Performance with Concurrent Processing':^80}")
+        print(f"{'Check logs folder for detailed thread-safe logs':^80}")
+        print(f"{'Check exports folder for threaded data export':^80}")
         print("="*80)
         
-        logger.info("Twin Digital Hospital System simulation completed successfully")
+        # Display key threading benefits
+        concurrent_metrics = simulation_results["concurrent_statistics"]["concurrent_metrics"]
+        print(f"\n🚀 THREADING BENEFITS:")
+        print(f"   • Processed {concurrent_metrics['total_patients']} patients concurrently")
+        print(f"   • Average visit time: {concurrent_metrics['average_visit_duration_minutes']} minutes")
+        print(f"   • Success rate: {concurrent_metrics['success_rate']}")
+        print(f"   • Total revenue: {concurrent_metrics['total_revenue']}")
+        print(f"   • Resource contention handled gracefully with timeouts")
+        
+        logger.info("Twin Digital Hospital System - Threaded Edition completed successfully")
         
     except FileNotFoundError as e:
         error_msg = f"Configuration file not found: {e}"
@@ -564,10 +800,127 @@ def main():
         sys.exit(1)
         
     except Exception as e:
-        error_msg = f"Simulation error: {str(e)}"
+        error_msg = f"Threaded simulation error: {str(e)}"
         print(f"❌ ERROR: {error_msg}")
         logger.error(error_msg, exc_info=True)
         sys.exit(1)
 
+def run_load_test(hospital: ThreadSafeHospital, num_patients: int = 20, max_workers: int = 8) -> None:
+    """
+    Run a load test to evaluate system performance under high concurrent load.
+    
+    Args:
+        hospital (ThreadSafeHospital): Hospital instance.
+        num_patients (int): Number of patients for load test.
+        max_workers (int): Maximum concurrent workers.
+    """
+    print("\n" + "="*80)
+    print(f"{'LOAD TEST - HIGH CONCURRENCY SIMULATION':^80}")
+    print("="*80)
+    
+    logger = logging.getLogger(__name__)
+    logger.info(f"Starting load test with {num_patients} patients and {max_workers} workers")
+    
+    # Generate patients for load test
+    load_test_patients = generate_random_patients(num_patients)
+    
+    # Run simulation with high concurrency
+    print(f"Running high-load simulation with {num_patients} patients...")
+    start_time = datetime.now()
+    
+    visit_summaries = hospital.process_patients_concurrently(load_test_patients, max_workers)
+    
+    end_time = datetime.now()
+    duration = (end_time - start_time).total_seconds()
+    
+    # Analyze results
+    successful = len([v for v in visit_summaries if v.get("success", False)])
+    failed = len(visit_summaries) - successful
+    
+    print(f"\n{'LOAD TEST RESULTS':^50}")
+    print("-" * 50)
+    print(f"Patients Processed: {len(visit_summaries)}")
+    print(f"Duration: {duration:.1f} seconds")
+    print(f"Throughput: {len(visit_summaries) / duration:.2f} patients/second")
+    print(f"Success Rate: {(successful / len(visit_summaries) * 100):.1f}%")
+    print(f"Failed Visits: {failed}")
+    
+    # Resource contention analysis
+    timeout_events = len([log for log in hospital.resource_logs if "timeout" in str(log).lower()])
+    print(f"Resource Timeouts: {timeout_events}")
+    print(f"System Stability: {'Good' if timeout_events < len(visit_summaries) * 0.1 else 'Needs Optimization'}")
+    
+    print("\n" + "="*80)
+
 if __name__ == "__main__":
-    main()
+    # Enhanced command line arguments for different simulation modes
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "--load-test":
+            # Run load test mode
+            logger = setup_logging()
+            config = load_config("default.yaml")
+            hospital = setup_hospital_from_config()
+            
+            num_patients = int(sys.argv[2]) if len(sys.argv) > 2 else 20
+            max_workers = int(sys.argv[3]) if len(sys.argv) > 3 else 8
+            
+            run_load_test(hospital, num_patients, max_workers)
+            
+        elif sys.argv[1] == "--sequential":
+            # Run in sequential mode for comparison
+            logger = setup_logging()
+            config = load_config("default.yaml")
+            hospital = setup_hospital_from_config()
+            patients = generate_random_patients()
+            
+            print("Running in SEQUENTIAL mode for comparison...")
+            simulation_results = run_sequential_simulation(hospital, patients, verbose=True)
+            display_threaded_statistics(hospital, simulation_results)
+            export_path = export_threaded_simulation_data(hospital, simulation_results, patients)
+            print(f"✓ Sequential simulation data exported to: {export_path}")
+            
+        elif sys.argv[1] == "--compare":
+            # Run both modes for performance comparison
+            logger = setup_logging()
+            config = load_config("default.yaml")
+            
+            # Test with smaller patient set for comparison
+            test_patients = generate_random_patients(8)
+            
+            print("\n" + "="*80)
+            print(f"{'PERFORMANCE COMPARISON: SEQUENTIAL VS THREADED':^80}")
+            print("="*80)
+            
+            # Sequential test
+            hospital_seq = setup_hospital_from_config()
+            print("\n1. Running Sequential Simulation...")
+            seq_start = datetime.now()
+            seq_results = run_sequential_simulation(hospital_seq, test_patients, verbose=False)
+            seq_duration = (datetime.now() - seq_start).total_seconds()
+            
+            # Threaded test  
+            hospital_thread = setup_hospital_from_config()
+            print("\n2. Running Threaded Simulation...")
+            thread_start = datetime.now()
+            thread_results = run_threaded_simulation(hospital_thread, test_patients, max_workers=4, verbose=False)
+            thread_duration = (datetime.now() - thread_start).total_seconds()
+            
+            # Comparison results
+            speedup = seq_duration / thread_duration if thread_duration > 0 else 0
+            print(f"\n{'COMPARISON RESULTS':^50}")
+            print("-" * 50)
+            print(f"Sequential Time: {seq_duration:.1f} seconds")
+            print(f"Threaded Time: {thread_duration:.1f} seconds")
+            print(f"Speedup Factor: {speedup:.2f}x")
+            print(f"Efficiency: {speedup/4*100:.1f}% (with 4 workers)")
+            print(f"Time Saved: {seq_duration - thread_duration:.1f} seconds")
+            
+        else:
+            print("Usage:")
+            print("  python main.py                    # Run threaded simulation (default)")
+            print("  python main.py --sequential       # Run sequential simulation")  
+            print("  python main.py --compare          # Compare both modes")
+            print("  python main.py --load-test [patients] [workers]  # Load test")
+    else:
+        # Run standard threaded simulation (default)
+        main()

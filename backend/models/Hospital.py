@@ -1,10 +1,12 @@
 import random
 import time
+import threading
 from datetime import datetime, timedelta
 import uuid
 from typing import Dict, Any, List, Optional, Tuple
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ..config import get_config
 from ..providers.llm import LLM
 from ..prompts.triage_nurse import TRIAGE_NURSE_PROMPT
@@ -16,10 +18,10 @@ from ..prompts.follow_up_consultation_doctor import FOLLOW_UP_CONSULTATION_PROMP
 # Configure logger for Hospital class
 logger = logging.getLogger(__name__)
 
-class Hospital:
+class ThreadSafeHospital:
     def __init__(self, name: str, doctors: List = None):
         """
-        Initializes the Hospital instance using configuration settings.
+        Initializes the Hospital instance with thread-safe resource management.
         
         Args:
             name (str): The name of the hospital.
@@ -35,25 +37,29 @@ class Hospital:
         self.patients = {}  # Dictionary of all patients by ID
         self.active_patients = {}  # Patients currently in the hospital
         
-        # Initialize rooms based on configuration
-        self.rooms = self._initialize_rooms()
+        # Thread-safe locks for resource management
+        self.rooms_lock = threading.RLock()  # Reentrant lock for room operations
+        self.doctors_lock = threading.RLock()  # Reentrant lock for doctor operations
+        self.devices_lock = threading.RLock()  # Reentrant lock for device operations
+        self.billing_lock = threading.RLock()  # Reentrant lock for billing operations
+        self.statistics_lock = threading.RLock()  # Reentrant lock for statistics
+        self.patients_lock = threading.RLock()  # Reentrant lock for patient management
         
-        # Initialize medical devices and test tyeps from configuration
+        # Initialize resources with thread safety in mind
+        self.rooms = self._initialize_rooms()
         self.medical_devices = self._initialize_devices()
         self.medical_tests = self._initialize_tests()
-        
-        # Initialize departments based on configuration
         self.departments = self._initialize_departments()
         
         # Assign doctors to departments
         self._assign_doctors_to_departments()
         
-        # Tracking systems
+        # Thread-safe tracking systems
         self.resource_logs = []
         self.patient_logs = []
         self.operation_logs = []
         
-        # Financial tracking
+        # Thread-safe financial tracking
         self.revenue = 0
         self.expenses = 0
         self.billing_records = []
@@ -67,12 +73,15 @@ class Hospital:
             "prescriptions_dispensed": 0
         }
         
+        # Thread pool for patient processing
+        self.max_concurrent_patients = min(len(self.doctors) * 2, 10)  # Limit concurrent patients
+        
         # Log hospital initialization
         logger.info(self._format_log_entry("INITIALIZATION", 
-            f"Hospital '{name}' initialized with {len(self.doctors)} doctors and {len(self.departments)} departments. Devices {self.medical_devices}. Tests {self.medical_tests}"))
+            f"Thread-safe hospital '{name}' initialized with {len(self.doctors)} doctors and {len(self.departments)} departments"))
         print(self._format_console_header())
         print(self._format_console_message("INIT", 
-            f"Welcome to {self.name}! Hospital system initialized successfully"))
+            f"Welcome to {self.name}! Thread-safe hospital system initialized"))
 
     def _initialize_rooms(self) -> Dict[str, Dict[str, int]]:
         """Initialize room configuration from config file."""
@@ -88,20 +97,14 @@ class Hospital:
                 "maintenance": 0
             }
         
-        # Ensure essential room types exist even if not in config
+        # Ensure essential room types exist
         essential_rooms = ["waiting", "consultation", "triage", "registration", "pharmacy"]
         for room_type in essential_rooms:
             if room_type not in rooms:
                 rooms[room_type] = {"total": 1, "available": 1, "occupied": 0, "maintenance": 0}
         
-        # Create a readable list of rooms with their counts
-        room_list = []
-        for room_type, room_info in rooms.items():
-            room_list.append(f"{room_type}({room_info['total']})")
-        
-        logger.info(self._format_log_entry("ROOMS_INIT", 
-            f"Initialized rooms: {', '.join(room_list)}"
-        ))
+        room_list = [f"{room_type}({room_info['total']})" for room_type, room_info in rooms.items()]
+        logger.info(self._format_log_entry("ROOMS_INIT", f"Initialized rooms: {', '.join(room_list)}"))
         
         return rooms
 
@@ -120,9 +123,7 @@ class Hospital:
                 "usage_hours": random.randint(100, 1000)
             }
         
-        logger.info(self._format_log_entry("DEVICES_INIT", 
-            f"Initialized medical devices: {', '.join(device_list)}"))
-        
+        logger.info(self._format_log_entry("DEVICES_INIT", f"Initialized medical devices: {', '.join(device_list)}"))
         return devices
     
     def _initialize_tests(self) -> Dict[str, List[str]]:
@@ -131,10 +132,7 @@ class Hospital:
         tests = config.get_tests()
         
         logger.info(self._format_log_entry("TESTS_INIT", 
-            f"Available Examinations: {', '.join(tests['Examination'])}; "))
-        logger.info(self._format_log_entry("TESTS_INIT", 
-            f"Available Lab Tests: {', '.join(tests['Lab_Test'])}; "))
-                
+            f"Available Tests - Examinations: {', '.join(tests['Examination'])}, Lab Tests: {', '.join(tests['Lab_Test'])}"))
         return tests
 
     def _initialize_departments(self) -> Dict[str, Dict[str, Any]]:
@@ -145,7 +143,7 @@ class Hospital:
         departments = {}
         for dept_name, capacity in departments_config.items():
             departments[dept_name] = {
-                "capacity": capacity * 10,  # Patient capacity per department
+                "capacity": capacity * 10,
                 "staff": [],
                 "current_patients": 0,
                 "equipment": [],
@@ -155,16 +153,11 @@ class Hospital:
         # Add emergency department if not present
         if "Emergency" not in departments:
             departments["Emergency"] = {
-                "capacity": 15,
-                "staff": [],
-                "current_patients": 0,
-                "equipment": [],
-                "specialization": "emergency"
+                "capacity": 15, "staff": [], "current_patients": 0,
+                "equipment": [], "specialization": "emergency"
             }
         
-        logger.info(self._format_log_entry("DEPARTMENTS_INIT", 
-            f"Initialized departments: {', '.join(departments.keys())}"))
-        
+        logger.info(self._format_log_entry("DEPARTMENTS_INIT", f"Initialized departments: {', '.join(departments.keys())}"))
         return departments
 
     def _assign_doctors_to_departments(self) -> None:
@@ -173,7 +166,6 @@ class Hospital:
             specialty_lower = doctor.specialty.lower()
             assigned = False
             
-            # Try to match specialty with department
             for dept_name, dept_info in self.departments.items():
                 dept_specialization = dept_info["specialization"]
                 if (specialty_lower in dept_specialization or 
@@ -185,883 +177,936 @@ class Hospital:
                         f"Dr. {doctor.name} ({doctor.specialty}) assigned to {dept_name} department"))
                     break
             
-            # If no specific department match, assign to General
             if not assigned:
                 if "General" not in self.departments:
                     self.departments["General"] = {
-                        "capacity": 20,
-                        "staff": [],
-                        "current_patients": 0,
-                        "equipment": [],
-                        "specialization": "general"
+                        "capacity": 20, "staff": [], "current_patients": 0,
+                        "equipment": [], "specialization": "general"
                     }
                 self.departments["General"]["staff"].append(doctor)
                 logger.info(self._format_log_entry("DOCTOR_ASSIGNMENT", 
                     f"Dr. {doctor.name} ({doctor.specialty}) assigned to General department"))
 
     def admit_patient(self, patient) -> bool:
-        """
-        Admits a new patient to the hospital with comprehensive logging.
-        
-        Args:
-            patient: The patient object to admit.
+        """Thread-safe patient admission."""
+        with self.patients_lock:
+            if patient.id in self.active_patients:
+                logger.warning(self._format_log_entry("ADMISSION_DUPLICATE", 
+                    f"Patient {patient.id} ({patient.name}) is already admitted"))
+                return False
             
-        Returns:
-            bool: True if admission was successful, False otherwise.
-        """
-        if patient.id in self.active_patients:
-            logger.warning(self._format_log_entry("ADMISSION_DUPLICATE", 
-                f"Patient {patient.id} ({patient.name}) is already admitted"))
-            print(self._format_console_message("WARNING", 
-                f"Patient {patient.name} is already admitted"))
-            return False
-        
-        # Add to hospital records
-        self.patients[patient.id] = patient
-        self.active_patients[patient.id] = patient
-        
-        # Log the admission
-        admission_record = {
-            "event": "admission",
-            "patient_id": patient.id,
-            "patient_name": patient.name,
-            "timestamp": datetime.now(),
-            "priority": patient.priority,
-            "insurance": patient.insurance
-        }
-        
-        self.patient_logs.append(admission_record)
-        self.daily_statistics["patients_processed"] += 1
-        
-        logger.info(self._format_log_entry("PATIENT_ADMISSION", 
-            f"Patient {patient.id} ({patient.name}) admitted - Priority: {patient.priority}"))
-        print(self._format_console_separator())
-        print(self._format_console_message("ADMISSION", 
-            f"Admitting {patient.name} to {self.name} - Priority Level {patient.priority}"))
-        
-        return True
+            self.patients[patient.id] = patient
+            self.active_patients[patient.id] = patient
+            
+            with self.statistics_lock:
+                self.daily_statistics["patients_processed"] += 1
+            
+            admission_record = {
+                "event": "admission", "patient_id": patient.id, "patient_name": patient.name,
+                "timestamp": datetime.now(), "priority": patient.priority, "insurance": patient.insurance,
+                "thread_id": threading.current_thread().name
+            }
+            
+            self.patient_logs.append(admission_record)
+            
+            logger.info(self._format_log_entry("PATIENT_ADMISSION", 
+                f"[Thread: {threading.current_thread().name}] Patient {patient.id} ({patient.name}) admitted"))
+            print(self._format_console_message("ADMISSION", 
+                f"[{threading.current_thread().name}] Admitting {patient.name} - Priority {patient.priority}"))
+            
+            return True
 
     def discharge_patient(self, patient) -> bool:
-        """
-        Discharges a patient from the hospital with comprehensive tracking.
-        
-        Args:
-            patient: The patient object to discharge.
+        """Thread-safe patient discharge."""
+        with self.patients_lock:
+            if patient.id not in self.active_patients:
+                logger.warning(self._format_log_entry("DISCHARGE_ERROR", 
+                    f"Patient {patient.id} ({patient.name}) is not currently admitted"))
+                return False
             
-        Returns:
-            bool: True if discharge was successful, False otherwise.
-        """
-        if patient.id not in self.active_patients:
-            logger.warning(self._format_log_entry("DISCHARGE_ERROR", 
-                f"Patient {patient.id} ({patient.name}) is not currently admitted"))
-            print(self._format_console_message("WARNING", 
-                f"Patient {patient.name} is not currently admitted"))
-            return False
-        
-        # Process discharge
-        patient.discharge()
-        
-        # Remove from active patients
-        del self.active_patients[patient.id]
-        
-        # Calculate stay duration
-        total_stay = (patient.discharge_time - patient.arrival_time).total_seconds() / 3600
-        
-        # Log the discharge
-        discharge_record = {
-            "event": "discharge",
-            "patient_id": patient.id,
-            "patient_name": patient.name,
-            "timestamp": patient.discharge_time,
-            "total_stay_hours": round(total_stay, 2),
-            "diagnoses_count": len(patient.medical_record.get("diagnoses", [])),
-            "prescriptions_count": len(patient.medical_record.get("prescriptions", []))
-        }
-        
-        self.patient_logs.append(discharge_record)
-        
-        logger.info(self._format_log_entry("PATIENT_DISCHARGE", 
-            f"Patient {patient.id} ({patient.name}) discharged after {total_stay:.1f} hours"))
-        print(self._format_console_separator())
-        print(self._format_console_message("DISCHARGE", 
-            f"{patient.name} discharged from {self.name} after {total_stay:.1f} hours"))
-        
-        return True
-
-    def allocate_room(self, room_type: str) -> bool:
-        """
-        Allocates a room of a given type with enhanced logging and validation.
-        
-        Args:
-            room_type (str): The type of room to allocate.
+            patient.discharge()
+            del self.active_patients[patient.id]
             
-        Returns:
-            bool: True if room was allocated, False otherwise.
-        """
-        if room_type not in self.rooms:
-            logger.error(self._format_log_entry("ROOM_ERROR", 
-                f"Room type '{room_type}' does not exist"))
-            print(self._format_console_message("ERROR", 
-                f"Room type '{room_type}' not available"))
-            return False
-        
-        room_info = self.rooms[room_type]
-        if room_info["available"] <= 0:
-            logger.warning(self._format_log_entry("ROOM_UNAVAILABLE", 
-                f"No {room_type} rooms available - All {room_info['total']} rooms occupied"))
-            print(self._format_console_message("CAPACITY", 
-                f"No {room_type} rooms available"))
-            return False
-        
-        # Allocate room
-        room_info["available"] -= 1
-        room_info["occupied"] += 1
-        
-        # Log resource utilization
-        utilization_record = {
-            "resource_type": "room",
-            "resource_name": room_type,
-            "action": "allocate",
-            "timestamp": datetime.now(),
-            "available": room_info["available"],
-            "total": room_info["total"],
-            "utilization_rate": (room_info["occupied"] / room_info["total"]) * 100
-        }
-        
-        self.resource_logs.append(utilization_record)
-        
-        logger.info(self._format_log_entry("ROOM_ALLOCATION", 
-            f"Allocated {room_type} room - {room_info['available']}/{room_info['total']} remaining"))
-        print(self._format_console_message("RESOURCE", 
-            f"Allocated {room_type} room ({room_info['available']} remaining)"))
-        
-        return True
-
-    def release_room(self, room_type: str) -> bool:
-        """
-        Releases a room back to the available pool with logging.
-        
-        Args:
-            room_type (str): The type of room to release.
+            total_stay = (patient.discharge_time - patient.arrival_time).total_seconds() / 3600
             
-        Returns:
-            bool: True if room was released, False otherwise.
-        """
-        if room_type not in self.rooms:
-            logger.error(self._format_log_entry("ROOM_ERROR", 
-                f"Room type '{room_type}' does not exist"))
-            return False
-        
-        room_info = self.rooms[room_type]
-        if room_info["occupied"] <= 0:
-            logger.warning(self._format_log_entry("ROOM_RELEASE_ERROR", 
-                f"No {room_type} rooms to release - All rooms already available"))
-            return False
-        
-        # Release room
-        room_info["available"] += 1
-        room_info["occupied"] -= 1
-        
-        # Log resource utilization
-        utilization_record = {
-            "resource_type": "room",
-            "resource_name": room_type,
-            "action": "release",
-            "timestamp": datetime.now(),
-            "available": room_info["available"],
-            "total": room_info["total"],
-            "utilization_rate": (room_info["occupied"] / room_info["total"]) * 100
-        }
-        
-        self.resource_logs.append(utilization_record)
-        
-        logger.info(self._format_log_entry("ROOM_RELEASE", 
-            f"Released {room_type} room - {room_info['available']}/{room_info['total']} available"))
-        print(self._format_console_message("RESOURCE", 
-            f"Released {room_type} room ({room_info['available']} available)"))
-        
-        return True
-
-    def allocate_device(self, device_name: str) -> bool:
-        """
-        Allocates a medical device for use.
-        
-        Args:
-            device_name (str): The name of the device to allocate.
+            discharge_record = {
+                "event": "discharge", "patient_id": patient.id, "patient_name": patient.name,
+                "timestamp": patient.discharge_time, "total_stay_hours": round(total_stay, 2),
+                "diagnoses_count": len(patient.medical_record.get("diagnoses", [])),
+                "prescriptions_count": len(patient.medical_record.get("prescriptions", [])),
+                "thread_id": threading.current_thread().name
+            }
             
-        Returns:
-            bool: True if device was allocated, False otherwise.
-        """
-        if device_name not in self.medical_devices:
-            logger.warning(self._format_log_entry("DEVICE_ERROR", 
-                f"Medical device '{device_name}' not available in hospital"))
-            return False
-        
-        device_info = self.medical_devices[device_name]
-        if device_info["available"] <= 0:
-            logger.warning(self._format_log_entry("DEVICE_UNAVAILABLE", 
-                f"{device_name} is currently in use or under maintenance"))
-            return False
-        
-        device_info["available"] -= 1
-        device_info["in_use"] += 1
-        device_info["usage_hours"] += 1
-        
-        logger.info(self._format_log_entry("DEVICE_ALLOCATION", 
-            f"Allocated {device_name} for use"))
-        
-        return True
-
-    def release_device(self, device_name: str) -> bool:
-        """Releases a medical device back to available pool."""
-        if device_name not in self.medical_devices:
-            return False
-        
-        device_info = self.medical_devices[device_name]
-        if device_info["in_use"] <= 0:
-            return False
-        
-        device_info["available"] += 1
-        device_info["in_use"] -= 1
-        
-        logger.info(self._format_log_entry("DEVICE_RELEASE", 
-            f"Released {device_name} from use"))
-        
-        return True
-
-    def find_available_doctor(self, specialty: str = None, department: str = None):
-        """
-        Finds an available doctor with enhanced filtering and load balancing.
-        
-        Args:
-            specialty (str, optional): Required specialty.
-            department (str, optional): Required department.
+            self.patient_logs.append(discharge_record)
             
-        Returns:
-            Doctor: An available doctor or None if none found.
-        """
-        potential_doctors = []
-        
-        if department and department in self.departments:
-            potential_doctors = self.departments[department]["staff"]
-            logger.debug(self._format_log_entry("DOCTOR_SEARCH", 
-                f"Searching in {department} department - {len(potential_doctors)} doctors"))
-        elif specialty:
-            potential_doctors = [d for d in self.doctors if specialty.lower() in d.specialty.lower()]
-            logger.debug(self._format_log_entry("DOCTOR_SEARCH", 
-                f"Searching for {specialty} specialty - {len(potential_doctors)} doctors"))
-        else:
-            potential_doctors = self.doctors
-        
-        # Filter for available doctors
-        available_doctors = [d for d in potential_doctors if d.is_available()]
-        
-        if not available_doctors:
-            logger.warning(self._format_log_entry("DOCTOR_UNAVAILABLE", 
-                f"No available doctors found for specialty='{specialty}', department='{department}'"))
-            print(self._format_console_message("CAPACITY", 
-                "No doctors currently available"))
-            return None
-        
-        # Load balancing: prefer doctors with fewer patients seen today
-        available_doctors.sort(key=lambda d: (d.patients_seen_today, -d.years_experience))
-        selected_doctor = available_doctors[0]
-        
-        logger.info(self._format_log_entry("DOCTOR_ASSIGNED", 
-            f"Dr. {selected_doctor.name} ({selected_doctor.specialty}) selected - "
-            f"Patients today: {selected_doctor.patients_seen_today}"))
-        
-        return selected_doctor
-
-    def bill_patient(self, patient, amount: float, service_description: str) -> str:
-        """
-        Creates a detailed billing record for a patient.
-        
-        Args:
-            patient: The patient to bill.
-            amount (float): The amount to bill.
-            service_description (str): Description of the service.
+            logger.info(self._format_log_entry("PATIENT_DISCHARGE", 
+                f"[Thread: {threading.current_thread().name}] Patient {patient.id} discharged after {total_stay:.1f} hours"))
+            print(self._format_console_message("DISCHARGE", 
+                f"[{threading.current_thread().name}] {patient.name} discharged after {total_stay:.1f} hours"))
             
-        Returns:
-            str: The bill ID.
-        """
-        bill_id = str(uuid.uuid4())[:8]
-        bill = {
-            "bill_id": bill_id,
-            "patient_id": patient.id,
-            "patient_name": patient.name,
-            "amount": amount,
-            "service": service_description,
-            "timestamp": datetime.now(),
-            "status": "Pending",
-            "insurance": patient.insurance,
-            "department": "General"
-        }
-        
-        self.billing_records.append(bill)
-        
-        logger.info(self._format_log_entry("BILLING", 
-            f"Bill {bill_id} created - Patient {patient.id}: ${amount} for {service_description}"))
-        print(self._format_console_message("BILLING", 
-            f"Bill created for {patient.name}: ${amount} - {service_description}"))
-        
-        return bill_id
+            return True
 
-    def process_payment(self, bill_id: str, amount_paid: float) -> bool:
-        """
-        Processes payment for a bill with enhanced tracking.
+    def allocate_room(self, room_type: str, timeout: float = 5.0) -> bool:
+        """Thread-safe room allocation with timeout."""
+        start_time = time.time()
         
-        Args:
-            bill_id (str): The ID of the bill.
-            amount_paid (float): The amount paid.
-            
-        Returns:
-            bool: True if payment processed successfully, False otherwise.
-        """
-        for bill in self.billing_records:
-            if bill["bill_id"] == bill_id:
-                if amount_paid >= bill["amount"]:
-                    bill["status"] = "Paid"
-                    bill["amount_paid"] = amount_paid
-                    bill["payment_time"] = datetime.now()
-                    bill["change"] = amount_paid - bill["amount"]
+        while time.time() - start_time < timeout:
+            with self.rooms_lock:
+                if room_type not in self.rooms:
+                    logger.error(self._format_log_entry("ROOM_ERROR", f"Room type '{room_type}' does not exist"))
+                    return False
+                
+                room_info = self.rooms[room_type]
+                if room_info["available"] > 0:
+                    room_info["available"] -= 1
+                    room_info["occupied"] += 1
                     
-                    self.revenue += bill["amount"]
+                    utilization_record = {
+                        "resource_type": "room", "resource_name": room_type, "action": "allocate",
+                        "timestamp": datetime.now(), "available": room_info["available"],
+                        "total": room_info["total"], "thread_id": threading.current_thread().name,
+                        "utilization_rate": (room_info["occupied"] / room_info["total"]) * 100
+                    }
                     
-                    logger.info(self._format_log_entry("PAYMENT", 
-                        f"Payment processed - Bill {bill_id}: ${amount_paid} (Change: ${bill['change']})"))
-                    print(self._format_console_message("PAYMENT", 
-                        f"Payment processed for {bill['patient_name']}: ${amount_paid}"))
+                    self.resource_logs.append(utilization_record)
+                    
+                    logger.info(self._format_log_entry("ROOM_ALLOCATION", 
+                        f"[Thread: {threading.current_thread().name}] Allocated {room_type} room - {room_info['available']}/{room_info['total']} remaining"))
                     
                     return True
-                else:
-                    bill["status"] = "Partial Payment"
-                    bill["amount_paid"] = amount_paid
-                    bill["payment_time"] = datetime.now()
-                    bill["remaining_balance"] = bill["amount"] - amount_paid
-                    
-                    self.revenue += amount_paid
-                    
-                    logger.info(self._format_log_entry("PARTIAL_PAYMENT", 
-                        f"Partial payment - Bill {bill_id}: ${amount_paid} (Remaining: ${bill['remaining_balance']})"))
-                    
-                    return True
+            
+            # Room not available, wait briefly before retrying
+            time.sleep(0.1)
         
-        logger.error(self._format_log_entry("PAYMENT_ERROR", f"Bill {bill_id} not found"))
+        # Timeout reached
+        logger.warning(self._format_log_entry("ROOM_TIMEOUT", 
+            f"[Thread: {threading.current_thread().name}] Timeout waiting for {room_type} room"))
+        print(self._format_console_message("TIMEOUT", 
+            f"[{threading.current_thread().name}] Timeout waiting for {room_type} room"))
         return False
 
-    # Simulation methods with improved logging
+    def release_room(self, room_type: str) -> bool:
+        """Thread-safe room release."""
+        with self.rooms_lock:
+            if room_type not in self.rooms:
+                logger.error(self._format_log_entry("ROOM_ERROR", f"Room type '{room_type}' does not exist"))
+                return False
+            
+            room_info = self.rooms[room_type]
+            if room_info["occupied"] <= 0:
+                logger.warning(self._format_log_entry("ROOM_RELEASE_ERROR", 
+                    f"No {room_type} rooms to release"))
+                return False
+            
+            room_info["available"] += 1
+            room_info["occupied"] -= 1
+            
+            utilization_record = {
+                "resource_type": "room", "resource_name": room_type, "action": "release",
+                "timestamp": datetime.now(), "available": room_info["available"],
+                "total": room_info["total"], "thread_id": threading.current_thread().name,
+                "utilization_rate": (room_info["occupied"] / room_info["total"]) * 100
+            }
+            
+            self.resource_logs.append(utilization_record)
+            
+            logger.info(self._format_log_entry("ROOM_RELEASE", 
+                f"[Thread: {threading.current_thread().name}] Released {room_type} room - {room_info['available']}/{room_info['total']} available"))
+            
+            return True
+
+    def allocate_device(self, device_name: str, timeout: float = 3.0) -> bool:
+        """Thread-safe device allocation with timeout."""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            with self.devices_lock:
+                if device_name not in self.medical_devices:
+                    logger.warning(self._format_log_entry("DEVICE_ERROR", f"Medical device '{device_name}' not available"))
+                    return False
+                
+                device_info = self.medical_devices[device_name]
+                if device_info["available"] > 0:
+                    device_info["available"] -= 1
+                    device_info["in_use"] += 1
+                    device_info["usage_hours"] += 1
+                    
+                    logger.info(self._format_log_entry("DEVICE_ALLOCATION", 
+                        f"[Thread: {threading.current_thread().name}] Allocated {device_name}"))
+                    return True
+            
+            time.sleep(0.1)  # Brief wait before retry
+        
+        logger.warning(self._format_log_entry("DEVICE_TIMEOUT", 
+            f"[Thread: {threading.current_thread().name}] Timeout waiting for {device_name}"))
+        return False
+
+    def release_device(self, device_name: str) -> bool:
+        """Thread-safe device release."""
+        with self.devices_lock:
+            if device_name not in self.medical_devices:
+                return False
+            
+            device_info = self.medical_devices[device_name]
+            if device_info["in_use"] <= 0:
+                return False
+            
+            device_info["available"] += 1
+            device_info["in_use"] -= 1
+            
+            logger.info(self._format_log_entry("DEVICE_RELEASE", 
+                f"[Thread: {threading.current_thread().name}] Released {device_name}"))
+            return True
+
+    def find_available_doctor(self, specialty: str = None, department: str = None, timeout: float = 10.0):
+        """Thread-safe doctor assignment with timeout and load balancing."""
+        start_time = time.time()
+        
+        while time.time() - start_time < timeout:
+            with self.doctors_lock:
+                potential_doctors = []
+                
+                if department and department in self.departments:
+                    potential_doctors = self.departments[department]["staff"]
+                elif specialty:
+                    potential_doctors = [d for d in self.doctors if specialty.lower() in d.specialty.lower()]
+                else:
+                    potential_doctors = self.doctors
+                
+                # Filter for available doctors
+                available_doctors = [d for d in potential_doctors if d.is_available()]
+                
+                if available_doctors:
+                    # Load balancing: prefer doctors with fewer patients
+                    available_doctors.sort(key=lambda d: (d.patients_seen_today, -d.years_experience))
+                    selected_doctor = available_doctors[0]
+                    
+                    logger.info(self._format_log_entry("DOCTOR_ASSIGNED", 
+                        f"[Thread: {threading.current_thread().name}] Dr. {selected_doctor.name} selected"))
+                    return selected_doctor
+            
+            # No doctors available, wait briefly
+            time.sleep(0.2)
+        
+        # Timeout reached
+        logger.warning(self._format_log_entry("DOCTOR_TIMEOUT", 
+            f"[Thread: {threading.current_thread().name}] Timeout finding available doctor"))
+        print(self._format_console_message("TIMEOUT", 
+            f"[{threading.current_thread().name}] No doctors available within timeout"))
+        return None
+
+    def bill_patient(self, patient, amount: float, service_description: str) -> str:
+        """Thread-safe billing."""
+        with self.billing_lock:
+            bill_id = str(uuid.uuid4())[:8]
+            bill = {
+                "bill_id": bill_id, "patient_id": patient.id, "patient_name": patient.name,
+                "amount": amount, "service": service_description, "timestamp": datetime.now(),
+                "status": "Pending", "insurance": patient.insurance, "department": "General",
+                "thread_id": threading.current_thread().name
+            }
+            
+            self.billing_records.append(bill)
+            
+            logger.info(self._format_log_entry("BILLING", 
+                f"[Thread: {threading.current_thread().name}] Bill {bill_id} created - ${amount} for {service_description}"))
+            
+            return bill_id
+
+    def process_payment(self, bill_id: str, amount_paid: float) -> bool:
+        """Thread-safe payment processing."""
+        with self.billing_lock:
+            for bill in self.billing_records:
+                if bill["bill_id"] == bill_id:
+                    if amount_paid >= bill["amount"]:
+                        bill["status"] = "Paid"
+                        bill["amount_paid"] = amount_paid
+                        bill["payment_time"] = datetime.now()
+                        bill["change"] = amount_paid - bill["amount"]
+                        
+                        self.revenue += bill["amount"]
+                        
+                        logger.info(self._format_log_entry("PAYMENT", 
+                            f"[Thread: {threading.current_thread().name}] Payment processed - Bill {bill_id}: ${amount_paid}"))
+                        return True
+                    else:
+                        bill["status"] = "Partial Payment"
+                        bill["amount_paid"] = amount_paid
+                        bill["payment_time"] = datetime.now()
+                        bill["remaining_balance"] = bill["amount"] - amount_paid
+                        
+                        self.revenue += amount_paid
+                        return True
+            
+            logger.error(self._format_log_entry("PAYMENT_ERROR", f"Bill {bill_id} not found"))
+            return False
+
     def simulate_patient_visit(self, patient) -> None:
         """
-        Simulates a complete patient visit with detailed process logging.
+        Original simulate_patient_visit method for backward compatibility.
+        This is the non-threaded version that calls the threaded version internally.
         
         Args:
             patient: The patient object to process.
         """
+        # For backward compatibility, run the threaded version but wait for completion
+        visit_summary = self.simulate_patient_visit_threaded(patient)
+        
+        # Log backward compatibility usage
+        logger.info(self._format_log_entry("BACKWARD_COMPAT", 
+            f"Non-threaded simulate_patient_visit called for {patient.name} - redirected to threaded version"))
+
+    def simulate_patient_visit_threaded(self, patient) -> Dict[str, Any]:
+        """
+        Thread-safe simulation of a complete patient visit.
+        
+        Args:
+            patient: The patient object to process.
+            
+        Returns:
+            Dict[str, Any]: Visit summary with outcomes and timing.
+        """
         visit_start_time = datetime.now()
+        thread_name = threading.current_thread().name
+        visit_summary = {
+            "patient_id": patient.id,
+            "patient_name": patient.name,
+            "thread_id": thread_name,
+            "start_time": visit_start_time,
+            "end_time": None,
+            "success": False,
+            "stages_completed": [],
+            "total_cost": 0,
+            "errors": []
+        }
         
-        print(self._format_console_header())
         print(self._format_console_message("VISIT_START", 
-            f"Starting visit simulation for {patient.name}"))
-        
-        # Stage 1: Admit patient
-        if not self.admit_patient(patient):
-            return
+            f"[{thread_name}] Starting threaded visit for {patient.name}"))
         
         try:
+            # Stage 1: Admit patient
+            if not self.admit_patient(patient):
+                visit_summary["errors"].append("Failed to admit patient")
+                return visit_summary
+            visit_summary["stages_completed"].append("admission")
+            
             # Stage 2: Triage
-            self._simulate_triage(patient)
+            if self._simulate_triage_threaded(patient):
+                visit_summary["stages_completed"].append("triage")
+            else:
+                visit_summary["errors"].append("Triage failed")
             
             # Stage 3: Registration
-            self._simulate_registration(patient)
+            if self._simulate_registration_threaded(patient):
+                visit_summary["stages_completed"].append("registration")
+            else:
+                visit_summary["errors"].append("Registration failed")
             
-            # Stage 4: Waiting and consultation
-            needs_tests = self._simulate_consultation(patient)
-            
-            # Stage 5: Tests if needed
-            if needs_tests:
-                self._simulate_tests(patient, needs_tests)
-                # Follow-up consultation
-                self._simulate_follow_up_consultation(patient)
+            # Stage 4: Consultation
+            needs_tests = self._simulate_consultation_threaded(patient)
+            if needs_tests is not None:
+                visit_summary["stages_completed"].append("consultation")
+                
+                # Stage 5: Tests if needed
+                if needs_tests:
+                    test_cost = self._simulate_tests_threaded(patient, needs_tests)
+                    visit_summary["total_cost"] += test_cost
+                    visit_summary["stages_completed"].append("tests")
+                    
+                    # Follow-up consultation
+                    if self._simulate_follow_up_consultation_threaded(patient):
+                        visit_summary["stages_completed"].append("follow_up")
             
             # Stage 6: Pharmacy if prescriptions
             if patient.medical_record.get("prescriptions"):
-                self._simulate_pharmacy(patient)
+                pharmacy_cost = self._simulate_pharmacy_threaded(patient)
+                visit_summary["total_cost"] += pharmacy_cost
+                visit_summary["stages_completed"].append("pharmacy")
+            
+            visit_summary["success"] = True
             
         except Exception as e:
+            error_msg = f"Error during patient visit: {str(e)}"
+            visit_summary["errors"].append(error_msg)
             logger.error(self._format_log_entry("VISIT_ERROR", 
-                f"Error during patient visit: {str(e)}"))
+                f"[Thread: {thread_name}] {error_msg}"))
             print(self._format_console_message("ERROR", 
-                f"Error during {patient.name}'s visit: {str(e)}"))
+                f"[{thread_name}] Error in {patient.name}'s visit: {str(e)}"))
         
         finally:
-            # Stage 7: Discharge
+            # Always discharge patient
             self.discharge_patient(patient)
             
-            visit_duration = (datetime.now() - visit_start_time).total_seconds() / 60
-            logger.info(self._format_log_entry("VISIT_COMPLETE", 
-                f"Patient visit completed in {visit_duration:.1f} minutes"))
-            print(self._format_console_message("VISIT_END", 
-                f"Visit completed for {patient.name} in {visit_duration:.1f} minutes"))
-
-    def _simulate_triage(self, patient) -> None:
-        """Simulate triage process with realistic vital signs."""
-        print(self._format_console_message("STAGE", "Stage 1: Triage Assessment"))
-        
-        if not self.allocate_room("triage"):
-            print(self._format_console_message("WAIT", "Waiting for triage room..."))
-            time.sleep(2)
-            self.allocate_room("triage")
-        
-        patient.update_status("Triage")
-        
-        # Triage Nurse
-        triage_prompt = TRIAGE_NURSE_PROMPT.format(
-            name = patient.name,
-            age=patient.age,
-            gender=patient.gender,
-            symptoms=patient.symptoms,
-            medical_history=patient.medical_history
-        )
-
-        llm_response = self.llm.get_completion(prompt=triage_prompt)
-        try:
-            response = llm_response.split("```json")[1].split("```")[0].strip()
-            # Use json.loads() to parse the string into a Python dictionary
-            triage_result = json.loads(response)
+            visit_summary["end_time"] = datetime.now()
+            visit_duration = (visit_summary["end_time"] - visit_start_time).total_seconds() / 60
+            visit_summary["duration_minutes"] = round(visit_duration, 2)
             
-            # Now you can access the data like a normal dictionary
-            priority = triage_result['priority']
-            initial_assessment = triage_result['initial_assessment']
-            temperature = triage_result['vital_stats']['temperature']
-            blood_pressure = triage_result['vital_stats']['blood_pressure']
-            heart_rate = triage_result['vital_stats']['heart_rate']
-            respiratory_rate = triage_result['vital_stats']['respiratory_rate']
+            logger.info(self._format_log_entry("VISIT_COMPLETE", 
+                f"[Thread: {thread_name}] Patient visit completed in {visit_duration:.1f} minutes"))
+            print(self._format_console_message("VISIT_END", 
+                f"[{thread_name}] {patient.name} visit completed in {visit_duration:.1f} minutes"))
+            
+            return visit_summary
 
-        except json.JSONDecodeError as e:
-            # This block will run if the string is NOT valid JSON
-            print(f"Error decoding JSON: {e}")
-            print(f"Raw response was: {llm_response}")
+    def _simulate_triage_threaded(self, patient) -> bool:
+        """Thread-safe triage simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("STAGE", f"[{thread_name}] Stage 1: Triage Assessment"))
         
-        patient.record_vitals(temperature, blood_pressure, heart_rate, respiratory_rate)
-        patient.set_priority(priority)
-        patient.add_note(initial_assessment, "Triage Nurse")
+        if not self.allocate_room("triage", timeout=30.0):
+            logger.warning(self._format_log_entry("TRIAGE_FAILED", 
+                f"[Thread: {thread_name}] Could not allocate triage room"))
+            return False
         
-        vital_console_message = self._format_console_message("VITALS", 
-            f"Vitals recorded - T: {temperature}°C, BP: {blood_pressure}, HR: {heart_rate}")
-        print(vital_console_message)
-        priority_console_message = self._format_console_message("PRIORITY", 
-            f"Priority Level: {patient.priority} ({patient.priority_description})")
-        print(priority_console_message)
-        assessment_console_message = self._format_console_message("ASSESSMENT", 
-            f"Initial Assessment: {initial_assessment}")
-        print(assessment_console_message)
+        try:
+            patient.update_status("Triage")
+            
+            # Simulate triage process with LLM
+            triage_prompt = TRIAGE_NURSE_PROMPT.format(
+                name=patient.name, age=patient.age, gender=patient.gender,
+                symptoms=patient.symptoms, medical_history=patient.medical_history
+            )
+            
+            llm_response = self.llm.get_completion(prompt=triage_prompt)
+            
+            try:
+                response = llm_response.split("```json")[1].split("```")[0].strip()
+                triage_result = json.loads(response)
+                
+                priority = triage_result['priority']
+                initial_assessment = triage_result['initial_assessment']
+                vital_stats = triage_result['vital_stats']
+                
+                patient.record_vitals(
+                    vital_stats['temperature'], vital_stats['blood_pressure'],
+                    vital_stats['heart_rate'], vital_stats['respiratory_rate']
+                )
+                patient.set_priority(priority)
+                patient.add_note(initial_assessment, "Triage Nurse")
+                
+                print(self._format_console_message("VITALS", 
+                    f"[{thread_name}] Vitals recorded for {patient.name}"))
+                print(self._format_console_message("PRIORITY", 
+                    f"[{thread_name}] Priority: {patient.priority} ({patient.priority_description})"))
+                
+                return True
+                
+            except json.JSONDecodeError as e:
+                logger.error(self._format_log_entry("TRIAGE_JSON_ERROR", 
+                    f"[Thread: {thread_name}] JSON decode error: {e}"))
+                return False
         
-        self.release_room("triage")
-        time.sleep(1)
+        finally:
+            self.release_room("triage")
+            time.sleep(0.5)  # Brief processing time
 
-    def _simulate_registration(self, patient) -> None:
-        """Simulate patient registration process."""
-        print(self._format_console_message("STAGE", "Stage 2: Patient Registration"))
+    def _simulate_registration_threaded(self, patient) -> bool:
+        """Thread-safe registration simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("STAGE", f"[{thread_name}] Stage 2: Registration"))
         
-        if not self.allocate_room("registration"):
-            print(self._format_console_message("WAIT", "Waiting for registration desk..."))
-            time.sleep(1)
-            self.allocate_room("registration")
+        if not self.allocate_room("registration", timeout=30.0):
+            return False
         
-        patient.update_status("Registration")
+        try:
+            patient.update_status("Registration")
+            
+            if not patient.has_medical_card:
+                patient.has_medical_card = True
+                patient.add_note("New medical card issued", "Registration Staff", "administrative")
+                print(self._format_console_message("INFO", f"[{thread_name}] Medical card created"))
+            else:
+                print(self._format_console_message("INFO", f"[{thread_name}] Medical card verified"))
+            
+            if patient.insurance:
+                patient.add_note(f"Insurance verified: {patient.insurance}", "Registration Staff", "administrative")
+                print(self._format_console_message("INFO", f"[{thread_name}] Insurance verified"))
+            
+            return True
         
-        if not patient.has_medical_card:
-            print(self._format_console_message("INFO", "Creating new medical card"))
-            patient.has_medical_card = True
-            patient.add_note("New medical card issued", "Registration Staff", "administrative")
-        else:
-            print(self._format_console_message("INFO", "Medical card verified"))
-        
-        if patient.insurance:
-            print(self._format_console_message("INFO", f"Insurance verified: {patient.insurance}"))
-            patient.add_note(f"Insurance verified: {patient.insurance}", "Registration Staff", "administrative")
-        
-        self.release_room("registration")
-        time.sleep(1)
+        finally:
+            self.release_room("registration")
+            time.sleep(0.5)
 
-    def _simulate_consultation(self, patient):
-        """Simulate doctor consultation with comprehensive logging."""
-        print(self._format_console_message("STAGE", "Stage 3: Medical Consultation"))
+    def _simulate_consultation_threaded(self, patient):
+        """Thread-safe consultation simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("STAGE", f"[{thread_name}] Stage 3: Consultation"))
         
-        # Wait in waiting room
-        if self.allocate_room("waiting"):
+        # Waiting room
+        if self.allocate_room("waiting", timeout=30.0):
             patient.update_status("Waiting")
             wait_time = random.randint(1, 3) * patient.priority / 3
             print(self._format_console_message("WAIT", 
-                f"Waiting for doctor (estimated: {wait_time:.1f} minutes)"))
-            time.sleep(min(wait_time, 2))
-        
-        # Find available doctor
-        doctor = self.find_available_doctor()
-        if not doctor:
-            print(self._format_console_message("WAIT", "No doctors available, extending wait time"))
-            time.sleep(3)
-            doctor = self.find_available_doctor()
-            if not doctor:
-                logger.error(self._format_log_entry("CONSULTATION_ERROR", 
-                    "No doctors available after extended wait"))
-                return None
-        
-        # Allocate consultation room
-        if not self.allocate_room("consultation"):
-            print(self._format_console_message("WAIT", "Waiting for consultation room..."))
-            time.sleep(2)
-            self.allocate_room("consultation")
-        
-        # Start consultation
-        if doctor.start_consultation(patient):
-            self.daily_statistics["consultations_completed"] += 1
-            
-            print(self._format_console_message("CONSULT", 
-                f"Consultation with Dr. {doctor.name} ({doctor.specialty})"))
-            
-            # Simulate consultation time
-            time.sleep(2)
-            
-            # Determine if tests are needed
-            needs_tests = []
-            consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
-                doctor_name=doctor.name,
-                doctor_specialty=doctor.specialty,
-                doctor_years_experience=doctor.years_experience,
-                patient_name=patient.name,
-                patient_age=patient.age,
-                patient_gender=patient.gender,
-                patient_symptoms=patient.symptoms,
-                patient_medical_history=patient.medical_history,
-                consultation_history=patient.consultation_history,
-                medical_record=patient.medical_record,
-                medical_tests=self.medical_tests
-            )
-
-            llm_response = self.llm.get_completion(prompt=consultation_prompt)
-            try:
-                response = llm_response.split("```json")[1].split("```")[0].strip()
-                # Use json.loads() to parse the string into a Python dictionary
-                consultation_result = json.loads(response)
-
-                if consultation_result.get("tests_needed"):
-                    for test in consultation_result["tests_needed"]:
-                        if test in self.medical_tests["Lab_Test"] or test in self.medical_tests["Examination"]:
-                            needs_tests.append(("Lab Test" if test in self.medical_tests["Lab_Test"] else "Examination", test))
-                            patient.medical_record["tests"].append(f"{test} recommended by Dr. {doctor.name}")
-                            print(self._format_console_message("RECOMMEND", f"{test} recommended"))
-                else:
-                    diagnosis = consultation_result.get("diagnosis")
-                    patient.add_diagnosis(diagnosis, doctor.name)
-                    prescription = consultation_result.get("prescription")
-                    patient.medical_record["prescriptions"].append(prescription)
-
-                    print(self._format_console_message("DIAGNOSIS", 
-                        f"Diagnosed: {diagnosis}"))
-                    print(self._format_console_message("PRESCRIPTION", 
-                        f"Prescribed: {prescription}"))
-
-            except json.JSONDecodeError as e:
-                # This block will run if the string is NOT valid JSON
-                print(f"Error decoding JSON: {e}")
-                print(f"Raw response was: {llm_response}")
-            
-            doctor.end_consultation()
-        
-        self.release_room("consultation")
-        if "waiting" in [r for r in self.rooms.keys()]:
+                f"[{thread_name}] Waiting for doctor ({wait_time:.1f} min estimate)"))
+            time.sleep(min(wait_time, 1))  # Reduced sleep time for simulation
             self.release_room("waiting")
         
-        return needs_tests
-
-    def _simulate_tests(self, patient, needs_tests) -> None:
-        """Simulate medical tests and examinations."""
-        print(self._format_console_message("STAGE", "Stage 4: Medical Tests"))
-        
-        for test_category, test_name in needs_tests:
-            if test_category == "Examination":
-                self._simulate_examination(patient, test_name)
-            elif test_category == "Lab Test":
-                self._simulate_lab_test(patient, test_name)
-            
-            self.daily_statistics["tests_performed"] += 1
-
-    def _simulate_examination(self, patient, test_name) -> None:
-        """Simulate medical examination."""
-        print(self._format_console_message("TEST", f"Performing {test_name}"))
-        
-        if not self.allocate_room("examination"):
-            print(self._format_console_message("WAIT", "Waiting for examination room..."))
-            time.sleep(1)
-            self.allocate_room("examination")
-        
-        # Allocate device if available
-        device_allocated = self.allocate_device(test_name + " Machine")
-        
-        patient.update_status(f"Undergoing Examination")
-        time.sleep(2)
-
-        examination_prompt = TEST_EXAMINATION_PROMPT.format(
-            test_name=test_name,
-            patient_name=patient.name,
-            patient_age=patient.age,
-            patient_gender=patient.gender,
-            patient_symptoms=patient.symptoms,
-            patient_medical_history=patient.medical_history,
-        )
-
-        llm_response = self.llm.get_completion(prompt=examination_prompt)
-        try:
-            response = llm_response.split("```json")[1].split("```")[0].strip()
-            # Use json.loads() to parse the string into a Python dictionary
-            examination_result = json.loads(response)
-            
-            # Now you can access the data like a normal dictionary
-            findings = examination_result['findings']
-            bill_amount = int(examination_result['bill'])
-
-        except json.JSONDecodeError as e:
-            # This block will run if the string is NOT valid JSON
-            print(f"Error decoding JSON: {e}")
-            print(f"Raw response was: {llm_response}")
-        
-        report = f"{test_name} Report: {findings}"
-        patient.medical_record["tests"].append(report)
-        patient.add_note(f"{test_name} completed - {findings}", "Radiology Tech", "examination")
-        
-        print(self._format_console_message("RESULT", f"{test_name} complete - {findings}"))
-        
-        if device_allocated:
-            self.release_device(test_name + " Machine")
-        self.release_room("examination")
-        
-        # Bill for examination
-        bill_id = self.bill_patient(patient, bill_amount, f"{test_name} Examination")
-        self.process_payment(bill_id, bill_amount)
-
-    def _simulate_lab_test(self, patient, test_name) -> None:
-        """Simulate laboratory test."""
-        print(self._format_console_message("TEST", f"Processing {test_name}"))
-        
-        if not self.allocate_room("lab"):
-            print(self._format_console_message("WAIT", "Waiting for lab facility..."))
-            time.sleep(1)
-            self.allocate_room("lab")
-        
-        patient.update_status(f"Undergoing Lab Test")
-        time.sleep(2)
-
-        lab_prompt = TEST_LAB_PROMPT.format(
-            test_name=test_name,
-            patient_name=patient.name,
-            patient_age=patient.age,
-            patient_gender=patient.gender,
-            patient_symptoms=patient.symptoms,
-            patient_medical_history=patient.medical_history,
-        )
-
-        llm_response = self.llm.get_completion(prompt=lab_prompt)
-        try:
-            response = llm_response.split("```json")[1].split("```")[0].strip()
-            # Use json.loads() to parse the string into a Python dictionary
-            lab_result = json.loads(response)
-            
-            # Now you can access the data like a normal dictionary
-            results = lab_result['results']
-            bill_amount = int(lab_result['bill'])
-
-        except json.JSONDecodeError as e:
-            # This block will run if the string is NOT valid JSON
-            print(f"Error decoding JSON: {e}")
-            print(f"Raw response was: {llm_response}")
-        
-        report = f"{test_name} Results: {results}"
-        patient.medical_record["tests"].append(report)
-        patient.add_note(f"{test_name} completed - {results}", "Lab Technician", "laboratory")
-        
-        print(self._format_console_message("RESULT", f"{test_name} complete - {results}"))
-        
-        self.release_room("lab")
-        
-        # Bill for lab test
-        bill_id = self.bill_patient(patient, bill_amount, f"{test_name} Analysis")
-        self.process_payment(bill_id, bill_amount)
-
-    def _simulate_follow_up_consultation(self, patient) -> None:
-        """Simulate follow-up consultation to review test results."""
-        print(self._format_console_message("STAGE", "Stage 5: Follow-up Consultation"))
-        
-        # Find the same doctor if available
-        doctor = self.find_available_doctor()
+        # Find available doctor
+        doctor = self.find_available_doctor(timeout=30.0)
         if not doctor:
-            print(self._format_console_message("INFO", "Original doctor unavailable, finding alternative"))
-            time.sleep(1)
-            doctor = self.find_available_doctor()
+            logger.error(self._format_log_entry("CONSULTATION_ERROR", 
+                f"[Thread: {thread_name}] No doctors available"))
+            return None
         
-        if doctor and self.allocate_room("consultation"):
+        # Allocate consultation room
+        if not self.allocate_room("consultation", timeout=30.0):
+            logger.error(self._format_log_entry("CONSULTATION_ERROR", 
+                f"[Thread: {thread_name}] No consultation rooms available"))
+            return None
+        
+        try:
+            # Start consultation
             if doctor.start_consultation(patient):
-                print(self._format_console_message("REVIEW", 
-                    f"Dr. {doctor.name} reviewing test results"))
+                with self.statistics_lock:
+                    self.daily_statistics["consultations_completed"] += 1
                 
-                time.sleep(2)
-
-                follow_up_consultation_prompt = FOLLOW_UP_CONSULTATION_PROMPT.format(
-                    doctor_name=doctor.name,
-                    doctor_specialty=doctor.specialty,
-                    doctor_years_experience=doctor.years_experience,
-                    patient_name=patient.name,
-                    patient_age=patient.age,
-                    patient_gender=patient.gender,
-                    patient_symptoms=patient.symptoms,
-                    patient_medical_history=patient.medical_history,
-                    consultation_history=patient.consultation_history,
-                    medical_record=patient.medical_record,
+                print(self._format_console_message("CONSULT", 
+                    f"[{thread_name}] Consultation with Dr. {doctor.name} ({doctor.specialty})"))
+                
+                # Simulate consultation
+                time.sleep(1)  # Reduced for simulation speed
+                
+                # LLM consultation
+                consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
+                    doctor_name=doctor.name, doctor_specialty=doctor.specialty,
+                    doctor_years_experience=doctor.years_experience, patient_name=patient.name,
+                    patient_age=patient.age, patient_gender=patient.gender,
+                    patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
+                    consultation_history=patient.consultation_history, medical_record=patient.medical_record,
+                    medical_tests=self.medical_tests
                 )
-
-                llm_response = self.llm.get_completion(prompt=follow_up_consultation_prompt)
+                
+                llm_response = self.llm.get_completion(prompt=consultation_prompt)
+                needs_tests = []
+                
                 try:
                     response = llm_response.split("```json")[1].split("```")[0].strip()
-                    # Use json.loads() to parse the string into a Python dictionary
-                    follow_up_consultation_result = json.loads(response)
-
-                    diagnosis = follow_up_consultation_result.get("diagnosis")
-                    patient.add_diagnosis(diagnosis, doctor.name)
-                    prescription = follow_up_consultation_result.get("prescription")
-                    patient.medical_record["prescriptions"].append(prescription)
-
-                    print(self._format_console_message("DIAGNOSIS", 
-                        f"Diagnosed: {diagnosis}"))
-                    print(self._format_console_message("PRESCRIPTION", 
-                        f"Prescribed: {prescription}"))
-
-                except json.JSONDecodeError as e:
-                    # This block will run if the string is NOT valid JSON
-                    print(f"Error decoding JSON: {e}")
-                    print(f"Raw response was: {llm_response}")    
+                    consultation_result = json.loads(response)
+                    
+                    if consultation_result.get("tests_needed"):
+                        for test in consultation_result["tests_needed"]:
+                            if test in self.medical_tests["Lab_Test"] or test in self.medical_tests["Examination"]:
+                                test_type = "Lab Test" if test in self.medical_tests["Lab_Test"] else "Examination"
+                                needs_tests.append((test_type, test))
+                                patient.medical_record["tests"].append(f"{test} recommended by Dr. {doctor.name}")
+                                print(self._format_console_message("RECOMMEND", f"[{thread_name}] {test} recommended"))
+                    else:
+                        diagnosis = consultation_result.get("diagnosis")
+                        patient.add_diagnosis(diagnosis, doctor.name)
+                        prescription = consultation_result.get("prescription")
+                        patient.medical_record["prescriptions"].append(prescription)
+                        
+                        print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Diagnosed: {diagnosis}"))
+                        print(self._format_console_message("PRESCRIPTION", f"[{thread_name}] Prescribed: {prescription}"))
                 
-                print(self._format_console_message("DIAGNOSIS", f"Final diagnosis: {diagnosis}"))
-                print(self._format_console_message("TREATMENT", f"Treatment prescribed"))
+                except json.JSONDecodeError as e:
+                    logger.error(self._format_log_entry("CONSULTATION_JSON_ERROR", 
+                        f"[Thread: {thread_name}] JSON decode error: {e}"))
                 
                 doctor.end_consultation()
-            
+                return needs_tests
+        
+        finally:
             self.release_room("consultation")
 
-    def _simulate_pharmacy(self, patient) -> None:
-        """Simulate pharmacy medication dispensing."""
-        print(self._format_console_message("STAGE", "Stage 6: Pharmacy"))
-        
-        if not self.allocate_room("pharmacy"):
-            print(self._format_console_message("WAIT", "Waiting at pharmacy..."))
-            time.sleep(1)
-            self.allocate_room("pharmacy")
-        
-        patient.update_status("Collecting Medicine from Pharmacy")
+    def _simulate_tests_threaded(self, patient, needs_tests) -> float:
+        """Thread-safe test simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("STAGE", f"[{thread_name}] Stage 4: Medical Tests"))
         
         total_cost = 0
-        for i, prescription in enumerate(patient.medical_record["prescriptions"]):
-            medication_cost = random.randint(25, 120)
-            total_cost += medication_cost
+        
+        for test_category, test_name in needs_tests:
+            try:
+                if test_category == "Examination":
+                    cost = self._simulate_examination_threaded(patient, test_name)
+                elif test_category == "Lab Test":
+                    cost = self._simulate_lab_test_threaded(patient, test_name)
+                else:
+                    cost = 0
+                
+                total_cost += cost
+                
+                with self.statistics_lock:
+                    self.daily_statistics["tests_performed"] += 1
+                    
+            except Exception as e:
+                logger.error(self._format_log_entry("TEST_ERROR", 
+                    f"[Thread: {thread_name}] Error in {test_name}: {str(e)}"))
+        
+        return total_cost
+
+    def _simulate_examination_threaded(self, patient, test_name) -> float:
+        """Thread-safe examination simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("TEST", f"[{thread_name}] Performing {test_name}"))
+        
+        if not self.allocate_room("examination", timeout=30.0):
+            logger.warning(self._format_log_entry("EXAMINATION_FAILED", 
+                f"[Thread: {thread_name}] Could not allocate examination room for {test_name}"))
+            return 0
+        
+        try:
+            # Try to allocate device
+            device_allocated = self.allocate_device(test_name + " Machine", timeout=30.0)
             
-            medication_details = {
-                "name": prescription,
-                "dosage": random.choice(["Once daily", "Twice daily", "Three times daily", "As needed"]),
-                "duration": f"{random.randint(5, 14)} days",
-                "cost": medication_cost,
-                "special_instructions": random.choice([
-                    "Take with food", "Take on empty stomach", 
-                    "Avoid alcohol", "No special instructions"
-                ])
+            patient.update_status("Undergoing Examination")
+            time.sleep(1)  # Reduced for simulation
+            
+            # LLM examination
+            examination_prompt = TEST_EXAMINATION_PROMPT.format(
+                test_name=test_name, patient_name=patient.name, patient_age=patient.age,
+                patient_gender=patient.gender, patient_symptoms=patient.symptoms,
+                patient_medical_history=patient.medical_history
+            )
+            
+            llm_response = self.llm.get_completion(prompt=examination_prompt)
+            
+            try:
+                response = llm_response.split("```json")[1].split("```")[0].strip()
+                examination_result = json.loads(response)
+                
+                findings = examination_result['findings']
+                bill_amount = int(examination_result['bill'])
+                
+                report = f"{test_name} Report: {findings}"
+                patient.medical_record["tests"].append(report)
+                patient.add_note(f"{test_name} completed - {findings}", "Radiology Tech", "examination")
+                
+                print(self._format_console_message("RESULT", f"[{thread_name}] {test_name} complete"))
+                
+                # Process billing
+                bill_id = self.bill_patient(patient, bill_amount, f"{test_name} Examination")
+                self.process_payment(bill_id, bill_amount)
+                
+                return bill_amount
+                
+            except json.JSONDecodeError as e:
+                logger.error(self._format_log_entry("EXAMINATION_JSON_ERROR", 
+                    f"[Thread: {thread_name}] JSON decode error: {e}"))
+                return 0
+        
+        finally:
+            if device_allocated:
+                self.release_device(test_name + " Machine")
+            self.release_room("examination")
+
+    def _simulate_lab_test_threaded(self, patient, test_name) -> float:
+        """Thread-safe lab test simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("TEST", f"[{thread_name}] Processing {test_name}"))
+        
+        if not self.allocate_room("lab", timeout=30.0):
+            logger.warning(self._format_log_entry("LAB_FAILED", 
+                f"[Thread: {thread_name}] Could not allocate lab room for {test_name}"))
+            return 0
+        
+        try:
+            patient.update_status("Undergoing Lab Test")
+            time.sleep(1)
+            
+            # LLM lab test
+            lab_prompt = TEST_LAB_PROMPT.format(
+                test_name=test_name, patient_name=patient.name, patient_age=patient.age,
+                patient_gender=patient.gender, patient_symptoms=patient.symptoms,
+                patient_medical_history=patient.medical_history
+            )
+            
+            llm_response = self.llm.get_completion(prompt=lab_prompt)
+            
+            try:
+                response = llm_response.split("```json")[1].split("```")[0].strip()
+                lab_result = json.loads(response)
+                
+                results = lab_result['results']
+                bill_amount = int(lab_result['bill'])
+                
+                report = f"{test_name} Results: {results}"
+                patient.medical_record["tests"].append(report)
+                patient.add_note(f"{test_name} completed - {results}", "Lab Technician", "laboratory")
+                
+                print(self._format_console_message("RESULT", f"[{thread_name}] {test_name} complete"))
+                
+                # Process billing
+                bill_id = self.bill_patient(patient, bill_amount, f"{test_name} Analysis")
+                self.process_payment(bill_id, bill_amount)
+                
+                return bill_amount
+                
+            except json.JSONDecodeError as e:
+                logger.error(self._format_log_entry("LAB_JSON_ERROR", 
+                    f"[Thread: {thread_name}] JSON decode error: {e}"))
+                return 0
+        
+        finally:
+            self.release_room("lab")
+
+    def _simulate_follow_up_consultation_threaded(self, patient) -> bool:
+        """Thread-safe follow-up consultation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("STAGE", f"[{thread_name}] Stage 5: Follow-up Consultation"))
+        
+        doctor = self.find_available_doctor(timeout=30.0)
+        if not doctor:
+            logger.warning(self._format_log_entry("FOLLOWUP_FAILED", 
+                f"[Thread: {thread_name}] No doctor available for follow-up"))
+            return False
+        
+        if not self.allocate_room("consultation", timeout=30.0):
+            return False
+        
+        try:
+            if doctor.start_consultation(patient):
+                print(self._format_console_message("REVIEW", 
+                    f"[{thread_name}] Dr. {doctor.name} reviewing test results"))
+                
+                time.sleep(1)
+                
+                # LLM follow-up consultation
+                follow_up_prompt = FOLLOW_UP_CONSULTATION_PROMPT.format(
+                    doctor_name=doctor.name, doctor_specialty=doctor.specialty,
+                    doctor_years_experience=doctor.years_experience, patient_name=patient.name,
+                    patient_age=patient.age, patient_gender=patient.gender,
+                    patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
+                    consultation_history=patient.consultation_history, medical_record=patient.medical_record
+                )
+                
+                llm_response = self.llm.get_completion(prompt=follow_up_prompt)
+                
+                try:
+                    response = llm_response.split("```json")[1].split("```")[0].strip()
+                    follow_up_result = json.loads(response)
+                    
+                    diagnosis = follow_up_result.get("diagnosis")
+                    patient.add_diagnosis(diagnosis, doctor.name)
+                    prescription = follow_up_result.get("prescription")
+                    patient.medical_record["prescriptions"].append(prescription)
+                    
+                    print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Final diagnosis: {diagnosis}"))
+                    print(self._format_console_message("TREATMENT", f"[{thread_name}] Treatment prescribed"))
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(self._format_log_entry("FOLLOWUP_JSON_ERROR", 
+                        f"[Thread: {thread_name}] JSON decode error: {e}"))
+                
+                doctor.end_consultation()
+                return True
+        
+        finally:
+            self.release_room("consultation")
+
+    def _simulate_pharmacy_threaded(self, patient) -> float:
+        """Thread-safe pharmacy simulation."""
+        thread_name = threading.current_thread().name
+        print(self._format_console_message("STAGE", f"[{thread_name}] Stage 6: Pharmacy"))
+        
+        if not self.allocate_room("pharmacy", timeout=30.0):
+            logger.warning(self._format_log_entry("PHARMACY_FAILED", 
+                f"[Thread: {thread_name}] Could not allocate pharmacy"))
+            return 0
+        
+        try:
+            patient.update_status("Collecting Medicine from Pharmacy")
+            
+            total_cost = 0
+            for prescription in patient.medical_record["prescriptions"]:
+                medication_cost = random.randint(25, 120)
+                total_cost += medication_cost
+                print(self._format_console_message("DISPENSE", 
+                    f"[{thread_name}] Dispensing: {prescription} - ${medication_cost}"))
+            
+            patient.add_note("All prescribed medications dispensed", "Pharmacist", "pharmacy")
+            
+            with self.statistics_lock:
+                self.daily_statistics["prescriptions_dispensed"] += 1
+            
+            # Process billing
+            bill_id = self.bill_patient(patient, total_cost, "Pharmacy - Prescribed Medications")
+            self.process_payment(bill_id, total_cost)
+            
+            print(self._format_console_message("PHARMACY", 
+                f"[{thread_name}] Medications dispensed - Total: ${total_cost}"))
+            
+            return total_cost
+        
+        finally:
+            self.release_room("pharmacy")
+
+    def process_patients_concurrently(self, patients: List, max_workers: int = None) -> List[Dict[str, Any]]:
+        """
+        Process multiple patients concurrently using ThreadPoolExecutor.
+        
+        Args:
+            patients (List): List of patients to process.
+            max_workers (int): Maximum number of concurrent threads.
+            
+        Returns:
+            List[Dict[str, Any]]: List of visit summaries.
+        """
+        if max_workers is None:
+            max_workers = self.max_concurrent_patients
+        
+        logger.info(self._format_log_entry("CONCURRENT_START", 
+            f"Starting concurrent processing of {len(patients)} patients with {max_workers} workers"))
+        
+        visit_summaries = []
+        
+        # Sort patients by priority (emergency patients first)
+        patients.sort(key=lambda p: p.priority)
+        
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Patient") as executor:
+            # Submit all patient visits
+            future_to_patient = {
+                executor.submit(self.simulate_patient_visit_threaded, patient): patient 
+                for patient in patients
             }
             
-            print(self._format_console_message("DISPENSE", 
-                f"Dispensing: {prescription} - ${medication_cost}"))
+            # Collect results as they complete
+            for future in as_completed(future_to_patient):
+                patient = future_to_patient[future]
+                try:
+                    visit_summary = future.result()
+                    visit_summaries.append(visit_summary)
+                    
+                    if visit_summary["success"]:
+                        logger.info(self._format_log_entry("PATIENT_COMPLETE", 
+                            f"Patient {patient.name} processed successfully in {visit_summary['duration_minutes']:.1f} min"))
+                    else:
+                        logger.warning(self._format_log_entry("PATIENT_FAILED", 
+                            f"Patient {patient.name} processing failed: {visit_summary['errors']}"))
+                        
+                except Exception as e:
+                    error_summary = {
+                        "patient_id": patient.id, "patient_name": patient.name,
+                        "success": False, "errors": [str(e)], "thread_id": "Unknown"
+                    }
+                    visit_summaries.append(error_summary)
+                    logger.error(self._format_log_entry("PATIENT_EXCEPTION", 
+                        f"Exception processing patient {patient.name}: {str(e)}"))
         
-        patient.add_note("All prescribed medications dispensed", "Pharmacist", "pharmacy")
-        self.daily_statistics["prescriptions_dispensed"] += 1
+        logger.info(self._format_log_entry("CONCURRENT_COMPLETE", 
+            f"Concurrent processing completed - {len(visit_summaries)} patients processed"))
         
-        # Bill for medications
-        bill_id = self.bill_patient(patient, total_cost, "Pharmacy - Prescribed Medications")
-        self.process_payment(bill_id, total_cost)
-        
-        print(self._format_console_message("PHARMACY", 
-            f"Medications dispensed - Total: ${total_cost}"))
-        
-        self.release_room("pharmacy")
+        return visit_summaries
 
     def generate_hospital_statistics(self) -> Dict[str, Any]:
-        """Generate comprehensive hospital statistics."""
-        if not hasattr(self, 'operation_start_time'):
-            self.operation_start_time = datetime.now()
-        
-        now = datetime.now()
-        operation_duration = (now - self.operation_start_time).total_seconds() / 3600
-        
-        # Room utilization statistics
-        room_stats = {}
-        for room_type, info in self.rooms.items():
-            utilization = (info["occupied"] / info["total"]) * 100 if info["total"] > 0 else 0
-            room_stats[room_type] = {
-                "total": info["total"],
-                "available": info["available"],
-                "occupied": info["occupied"],
-                "utilization_rate": f"{utilization:.1f}%"
+        """Generate comprehensive hospital statistics (thread-safe version)."""
+        with self.statistics_lock:
+            if not hasattr(self, 'operation_start_time'):
+                self.operation_start_time = datetime.now()
+            
+            now = datetime.now()
+            operation_duration = (now - self.operation_start_time).total_seconds() / 3600
+            
+            # Thread-safe room utilization statistics
+            room_stats = {}
+            with self.rooms_lock:
+                for room_type, info in self.rooms.items():
+                    utilization = (info["occupied"] / info["total"]) * 100 if info["total"] > 0 else 0
+                    room_stats[room_type] = {
+                        "total": info["total"],
+                        "available": info["available"],
+                        "occupied": info["occupied"],
+                        "utilization_rate": f"{utilization:.1f}%"
+                    }
+            
+            # Thread-safe doctor utilization statistics
+            doctor_stats = []
+            with self.doctors_lock:
+                for doctor in self.doctors:
+                    daily_summary = doctor.get_daily_summary()
+                    doctor_stats.append({
+                        "name": doctor.name,
+                        "specialty": doctor.specialty,
+                        "patients_seen": doctor.patients_seen_today,
+                        "max_capacity": doctor.max_patients_per_day,
+                        "utilization": f"{daily_summary['daily_metrics']['utilization_rate']}%",
+                        "avg_consultation_time": f"{daily_summary['daily_metrics']['average_consultation_time_minutes']:.1f}min",
+                        "status": doctor.status
+                    })
+            
+            # Thread-safe financial statistics
+            with self.billing_lock:
+                total_bills = len(self.billing_records)
+                paid_bills = len([b for b in self.billing_records if b["status"] == "Paid"])
+                payment_rate = (paid_bills / total_bills * 100) if total_bills > 0 else 0
+            
+            statistics = {
+                "hospital_info": {
+                    "name": self.name,
+                    "operation_hours": round(operation_duration, 2),
+                    "departments": len(self.departments),
+                    "total_doctors": len(self.doctors)
+                },
+                "patient_statistics": {
+                    "total_processed": len(self.patients),
+                    "currently_active": len(self.active_patients),
+                    "consultations_completed": self.daily_statistics["consultations_completed"],
+                    "tests_performed": self.daily_statistics["tests_performed"],
+                    "prescriptions_dispensed": self.daily_statistics["prescriptions_dispensed"]
+                },
+                "financial_summary": {
+                    "total_revenue": f"${self.revenue:.2f}",
+                    "total_expenses": f"${self.expenses:.2f}",
+                    "profit": f"${self.revenue - self.expenses:.2f}",
+                    "bills_issued": total_bills,
+                    "payment_rate": f"{payment_rate:.1f}%"
+                },
+                "resource_utilization": {
+                    "rooms": room_stats,
+                    "doctors": doctor_stats
+                },
+                "operational_metrics": {
+                    "avg_patient_processing_time": "45.3 minutes",
+                    "patient_satisfaction_score": "4.2/5.0",
+                    "bed_occupancy_rate": "78.5%",
+                    "equipment_utilization": "65.2%"
+                }
             }
+            
+            return statistics
+
+    def generate_concurrent_statistics(self, visit_summaries: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Generate statistics from concurrent patient processing."""
+        successful_visits = [v for v in visit_summaries if v.get("success", False)]
+        failed_visits = [v for v in visit_summaries if not v.get("success", False)]
         
-        # Doctor utilization statistics
-        doctor_stats = []
-        for doctor in self.doctors:
-            daily_summary = doctor.get_daily_summary()
-            doctor_stats.append({
-                "name": doctor.name,
-                "specialty": doctor.specialty,
-                "patients_seen": doctor.patients_seen_today,
-                "max_capacity": doctor.max_patients_per_day,
-                "utilization": f"{daily_summary['daily_metrics']['utilization_rate']}%",
-                "avg_consultation_time": f"{daily_summary['daily_metrics']['average_consultation_time_minutes']:.1f}min",
-                "status": doctor.status
-            })
+        # Calculate timing statistics
+        durations = [v.get("duration_minutes", 0) for v in successful_visits if v.get("duration_minutes")]
+        avg_duration = sum(durations) / len(durations) if durations else 0
         
-        # Financial statistics
-        total_bills = len(self.billing_records)
-        paid_bills = len([b for b in self.billing_records if b["status"] == "Paid"])
-        payment_rate = (paid_bills / total_bills * 100) if total_bills > 0 else 0
+        # Calculate cost statistics
+        total_costs = [v.get("total_cost", 0) for v in successful_visits]
+        total_revenue = sum(total_costs)
+        avg_cost_per_patient = total_revenue / len(successful_visits) if successful_visits else 0
         
-        statistics = {
-            "hospital_info": {
-                "name": self.name,
-                "operation_hours": round(operation_duration, 2),
-                "departments": len(self.departments),
-                "total_doctors": len(self.doctors)
+        # Stage completion analysis
+        stage_completion = {}
+        for visit in visit_summaries:
+            for stage in visit.get("stages_completed", []):
+                stage_completion[stage] = stage_completion.get(stage, 0) + 1
+        
+        return {
+            "concurrent_metrics": {
+                "total_patients": len(visit_summaries),
+                "successful_visits": len(successful_visits),
+                "failed_visits": len(failed_visits),
+                "success_rate": f"{(len(successful_visits) / len(visit_summaries) * 100):.1f}%" if visit_summaries else "0%",
+                "average_visit_duration_minutes": round(avg_duration, 2),
+                "total_revenue": f"${total_revenue:.2f}",
+                "average_cost_per_patient": f"${avg_cost_per_patient:.2f}"
             },
-            "patient_statistics": {
-                "total_processed": len(self.patients),
-                "currently_active": len(self.active_patients),
-                "consultations_completed": self.daily_statistics["consultations_completed"],
-                "tests_performed": self.daily_statistics["tests_performed"],
-                "prescriptions_dispensed": self.daily_statistics["prescriptions_dispensed"]
+            "stage_completion_rates": {
+                stage: f"{(count / len(visit_summaries) * 100):.1f}%" 
+                for stage, count in stage_completion.items()
             },
-            "financial_summary": {
-                "total_revenue": f"${self.revenue:.2f}",
-                "total_expenses": f"${self.expenses:.2f}",
-                "profit": f"${self.revenue - self.expenses:.2f}",
-                "bills_issued": total_bills,
-                "payment_rate": f"{payment_rate:.1f}%"
-            },
-            "resource_utilization": {
-                "rooms": room_stats,
-                "doctors": doctor_stats
-            },
-            "operational_metrics": {
-                "avg_patient_processing_time": "45.3 minutes",
-                "patient_satisfaction_score": "4.2/5.0",
-                "bed_occupancy_rate": "78.5%",
-                "equipment_utilization": "65.2%"
+            "threading_performance": {
+                "max_concurrent_patients": self.max_concurrent_patients,
+                "threads_used": len(set(v.get("thread_id", "Unknown") for v in visit_summaries)),
+                "resource_contention_events": len([log for log in self.resource_logs if "timeout" in log.get("action", "").lower()])
             }
         }
-        
-        return statistics
 
     def _format_log_entry(self, event_type: str, message: str) -> str:
         """Format log entry with hospital ID."""
@@ -1082,10 +1127,13 @@ class Hospital:
 
     def __str__(self) -> str:
         """String representation of the Hospital."""
-        return (f"Hospital('{self.name}' - {len(self.doctors)} doctors, "
+        return (f"ThreadSafeHospital('{self.name}' - {len(self.doctors)} doctors, "
                 f"{len(self.active_patients)} active patients)")
 
     def __repr__(self) -> str:
         """Detailed representation of the Hospital."""
-        return (f"Hospital(id='{self.id}', name='{self.name}', "
+        return (f"ThreadSafeHospital(id='{self.id}', name='{self.name}', "
                 f"doctors={len(self.doctors)}, departments={len(self.departments)})")
+
+# For backward compatibility, alias the new class
+Hospital = ThreadSafeHospital

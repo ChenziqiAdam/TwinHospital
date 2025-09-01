@@ -895,7 +895,7 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
 # Example usage
 if __name__ == "__main__":
     # Replace with your actual JSON file path
-    json_file = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/hospital_simulation_export_20250901_094005.json"
+    json_file = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/threaded_hospital_simulation_20250901_112907.json"
     
     try:
         output_path = generate_hospital_report(json_file)
