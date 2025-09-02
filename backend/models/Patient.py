@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class ThreadSafePatient:
     def __init__(self, patient_id: int, name: str, age: int = None, gender: str = None, 
                  contact: str = None, insurance: bool = True, symptoms: List = None, 
-                 medical_history: List = None, consultation_history: List[Any] = None):
+                 medical_history: List = None, assigned_department: str = None, consultation_history: List[Any] = None):
         """
         Initializes a thread-safe Patient instance.
         
@@ -63,6 +63,9 @@ class ThreadSafePatient:
         # Symptoms and Medical History
         self.symptoms = symptoms or []
         self.medical_history = medical_history or []
+
+        # Department assignment
+        self.assigned_department = assigned_department or "General"
         
         # Consultation history
         self.consultation_history = consultation_history or []
@@ -317,7 +320,9 @@ class ThreadSafePatient:
                     "gender": self.gender,
                     "insurance": self.insurance,
                     "symptoms": self.symptoms,
-                    "medical_history": self.medical_history
+                    "medical_history": self.medical_history,
+                    "consultation_history": self.consultation_history,
+                    "assigned_department": self.assigned_department
                 },
                 "visit_info": {
                     "arrival_time": self.arrival_time,

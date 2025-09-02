@@ -8,6 +8,9 @@ Here are the patient info:
 - Symptoms: {symptoms}
 - Medical History: {medical_history}
 
+Here are the hospital departments:
+{departments}
+
 Based on the info, judge and ruturn the following in JSON format:
 1. Priority Level (1-2): 1 (Emergency), 2 (Standard)
 2. Initial Assessment: A brief summary of the patient's condition.
@@ -16,6 +19,7 @@ Based on the info, judge and ruturn the following in JSON format:
     - Bloof Pressure
     - Heart Rate
     - Respiratory Rate
+4. Recommended Department: The most appropriate department for the patient's condition.
 
 Sample Output:
 ```json
@@ -28,7 +32,8 @@ Sample Output:
             "blood_pressure": 1.5,
             "heart_rate": 80,
             "respiratory_rate": 18
-        }}
+        }},
+    "recommended_department": "General"
 }}
 ```
 

@@ -241,9 +241,9 @@ def generate_doctors_from_config() -> List[Doctor]:
             )
             
             # Set realistic shift hours with some overlap for better coverage
-            start_hour = random.choice([7, 8, 9])
+            start_hour = 8
             shift_start = datetime.now().replace(hour=start_hour, minute=0, second=0)
-            shift_duration = random.choice([8, 9, 10])
+            shift_duration = 14
             shift_end = shift_start + timedelta(hours=shift_duration)
             doctor.set_shift(shift_start, shift_end)
             

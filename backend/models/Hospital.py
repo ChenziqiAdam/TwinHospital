@@ -246,7 +246,7 @@ class ThreadSafeHospital:
             
             return True
 
-    def allocate_room(self, room_type: str, timeout: float = 5.0) -> bool:
+    def allocate_room(self, room_type: str, timeout: float = 120.0) -> bool:
         """Thread-safe room allocation with timeout."""
         start_time = time.time()
         
@@ -315,7 +315,7 @@ class ThreadSafeHospital:
             
             return True
 
-    def allocate_device(self, device_name: str, timeout: float = 3.0) -> bool:
+    def allocate_device(self, device_name: str, timeout: float = 120.0) -> bool:
         """Thread-safe device allocation with timeout."""
         start_time = time.time()
         
@@ -358,14 +358,28 @@ class ThreadSafeHospital:
                 f"[Thread: {threading.current_thread().name}] Released {device_name}"))
             return True
 
-    def find_available_doctor(self, specialty: str = None, department: str = None, timeout: float = 10.0):
-        """Thread-safe doctor assignment with timeout and load balancing."""
+    def find_and_reserve_doctor_atomic(self, patient, specialty: str = None, department: str = None, timeout: float = 120.0):
+        """
+        FIXED: Thread-safe atomic doctor finding and reservation.
+        This method combines doctor finding and reservation into a single atomic operation
+        to prevent race conditions where multiple patients get assigned to the same doctor.
+        
+        Args:
+            patient: The patient object that needs a doctor
+            specialty (str, optional): Required doctor specialty
+            department (str, optional): Required department
+            timeout (float): Maximum time to wait for an available doctor
+            
+        Returns:
+            Doctor object if successfully reserved, None if timeout reached
+        """
         start_time = time.time()
+        thread_name = threading.current_thread().name
         
         while time.time() - start_time < timeout:
-            with self.doctors_lock:
+            with self.doctors_lock:  # Global lock for doctor operations
+                # Find potential doctors
                 potential_doctors = []
-                
                 if department and department in self.departments:
                     potential_doctors = self.departments[department]["staff"]
                 elif specialty:
@@ -377,22 +391,34 @@ class ThreadSafeHospital:
                 available_doctors = [d for d in potential_doctors if d.is_available()]
                 
                 if available_doctors:
-                    # Load balancing: prefer doctors with fewer patients
+                    # Sort by workload (fewest patients first, then by experience)
                     available_doctors.sort(key=lambda d: (d.patients_seen_today, -d.years_experience))
-                    selected_doctor = available_doctors[0]
                     
-                    logger.info(self._format_log_entry("DOCTOR_ASSIGNED", 
-                        f"[Thread: {threading.current_thread().name}] Dr. {selected_doctor.name} selected"))
-                    return selected_doctor
+                    # ATOMIC OPERATION: Try to reserve the best available doctor
+                    for doctor in available_doctors:
+                        # Use doctor's own lock to atomically check and reserve
+                        with doctor.consultation_lock:
+                            # Double-check availability within the doctor's lock
+                            if doctor.is_available():
+                                # Immediately start consultation (this reserves the doctor)
+                                if doctor.start_consultation(patient):
+                                    logger.info(self._format_log_entry("DOCTOR_ATOMIC_ASSIGN", 
+                                        f"[Thread: {thread_name}] Atomically assigned Dr. {doctor.name} to {patient.name}"))
+                                    return doctor
+                    
+                    # If we get here, all doctors became busy between our checks
+                    # This is normal concurrent behavior - just continue to retry
+                    logger.debug(self._format_log_entry("DOCTOR_RACE_DETECTED", 
+                        f"[Thread: {thread_name}] Doctors became busy during assignment, retrying..."))
             
-            # No doctors available, wait briefly
+            # Wait before next attempt
             time.sleep(0.2)
         
         # Timeout reached
         logger.warning(self._format_log_entry("DOCTOR_TIMEOUT", 
-            f"[Thread: {threading.current_thread().name}] Timeout finding available doctor"))
+            f"[Thread: {thread_name}] Timeout finding available doctor for {patient.name}"))
         print(self._format_console_message("TIMEOUT", 
-            f"[{threading.current_thread().name}] No doctors available within timeout"))
+            f"[{thread_name}] No doctors available for {patient.name} within {timeout}s"))
         return None
 
     def bill_patient(self, patient, amount: float, service_description: str) -> str:
@@ -503,7 +529,7 @@ class ThreadSafeHospital:
                 visit_summary["errors"].append("Registration failed")
             
             # Stage 4: Consultation
-            needs_tests = self._simulate_consultation_threaded(patient)
+            needs_tests = self._simulate_consultation_threaded_fixed(patient)
             if needs_tests is not None:
                 visit_summary["stages_completed"].append("consultation")
                 
@@ -514,7 +540,7 @@ class ThreadSafeHospital:
                     visit_summary["stages_completed"].append("tests")
                     
                     # Follow-up consultation
-                    if self._simulate_follow_up_consultation_threaded(patient):
+                    if self._simulate_follow_up_consultation_threaded_fixed(patient):
                         visit_summary["stages_completed"].append("follow_up")
             
             # Stage 6: Pharmacy if prescriptions
@@ -564,7 +590,8 @@ class ThreadSafeHospital:
             # Simulate triage process with LLM
             triage_prompt = TRIAGE_NURSE_PROMPT.format(
                 name=patient.name, age=patient.age, gender=patient.gender,
-                symptoms=patient.symptoms, medical_history=patient.medical_history
+                symptoms=patient.symptoms, medical_history=patient.medical_history,
+                departments=self.departments
             )
             
             llm_response = self.llm.get_completion(prompt=triage_prompt)
@@ -576,6 +603,10 @@ class ThreadSafeHospital:
                 priority = triage_result['priority']
                 initial_assessment = triage_result['initial_assessment']
                 vital_stats = triage_result['vital_stats']
+
+                assigned_department = triage_result['recommended_department']
+                print(self._format_console_message("DEPARTMENT", 
+                    f"[{thread_name}] Assigned to {assigned_department} department"))
                 
                 patient.record_vitals(
                     vital_stats['temperature'], vital_stats['blood_pressure'],
@@ -583,6 +614,7 @@ class ThreadSafeHospital:
                 )
                 patient.set_priority(priority)
                 patient.add_note(initial_assessment, "Triage Nurse")
+                patient.assigned_department = assigned_department
                 
                 print(self._format_console_message("VITALS", 
                     f"[{thread_name}] Vitals recorded for {patient.name}"))
@@ -628,8 +660,11 @@ class ThreadSafeHospital:
             self.release_room("registration")
             time.sleep(0.5)
 
-    def _simulate_consultation_threaded(self, patient):
-        """Thread-safe consultation simulation."""
+    def _simulate_consultation_threaded_fixed(self, patient):
+        """
+        FIXED: Thread-safe consultation simulation with atomic doctor assignment.
+        This version eliminates the race condition by using atomic doctor reservation.
+        """
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 3: Consultation"))
         
@@ -642,70 +677,76 @@ class ThreadSafeHospital:
             time.sleep(min(wait_time, 1))  # Reduced sleep time for simulation
             self.release_room("waiting")
         
-        # Find available doctor
-        doctor = self.find_available_doctor(timeout=30.0)
+        # This combines finding and reserving into a single operation
+        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department, timeout=30.0)
         if not doctor:
             logger.error(self._format_log_entry("CONSULTATION_ERROR", 
-                f"[Thread: {thread_name}] No doctors available"))
+                f"[Thread: {thread_name}] No doctors available for {patient.name}"))
+            print(self._format_console_message("ERROR", 
+                f"[{thread_name}] No doctors available for {patient.name}"))
             return None
         
         # Allocate consultation room
         if not self.allocate_room("consultation", timeout=30.0):
+            # Release the doctor since we couldn't get a room
+            doctor.end_consultation()
             logger.error(self._format_log_entry("CONSULTATION_ERROR", 
                 f"[Thread: {thread_name}] No consultation rooms available"))
             return None
         
         try:
-            # Start consultation
-            if doctor.start_consultation(patient):
-                with self.statistics_lock:
-                    self.daily_statistics["consultations_completed"] += 1
+            # Doctor is already reserved via atomic assignment
+            # No need to call start_consultation() again
+            
+            with self.statistics_lock:
+                self.daily_statistics["consultations_completed"] += 1
+            
+            print(self._format_console_message("CONSULT", 
+                f"[{thread_name}] Consultation with Dr. {doctor.name} ({doctor.specialty})"))
+            
+            # Simulate consultation
+            time.sleep(1)  # Reduced for simulation speed
+            
+            # LLM consultation
+            consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
+                doctor_name=doctor.name, doctor_specialty=doctor.specialty,
+                doctor_years_experience=doctor.years_experience, patient_name=patient.name,
+                patient_age=patient.age, patient_gender=patient.gender,
+                patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
+                consultation_history=patient.consultation_history, medical_record=patient.medical_record,
+                medical_tests=self.medical_tests
+            )
+            
+            llm_response = self.llm.get_completion(prompt=consultation_prompt)
+            needs_tests = []
+            
+            try:
+                response = llm_response.split("```json")[1].split("```")[0].strip()
+                consultation_result = json.loads(response)
                 
-                print(self._format_console_message("CONSULT", 
-                    f"[{thread_name}] Consultation with Dr. {doctor.name} ({doctor.specialty})"))
-                
-                # Simulate consultation
-                time.sleep(1)  # Reduced for simulation speed
-                
-                # LLM consultation
-                consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
-                    doctor_name=doctor.name, doctor_specialty=doctor.specialty,
-                    doctor_years_experience=doctor.years_experience, patient_name=patient.name,
-                    patient_age=patient.age, patient_gender=patient.gender,
-                    patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
-                    consultation_history=patient.consultation_history, medical_record=patient.medical_record,
-                    medical_tests=self.medical_tests
-                )
-                
-                llm_response = self.llm.get_completion(prompt=consultation_prompt)
-                needs_tests = []
-                
-                try:
-                    response = llm_response.split("```json")[1].split("```")[0].strip()
-                    consultation_result = json.loads(response)
+                if consultation_result.get("tests_needed"):
+                    for test in consultation_result["tests_needed"]:
+                        if test in self.medical_tests["Lab_Test"] or test in self.medical_tests["Examination"]:
+                            test_type = "Lab Test" if test in self.medical_tests["Lab_Test"] else "Examination"
+                            needs_tests.append((test_type, test))
+                            patient.medical_record["tests"].append(f"{test} recommended by Dr. {doctor.name}")
+                            print(self._format_console_message("RECOMMEND", f"[{thread_name}] {test} recommended"))
+                else:
+                    diagnosis = consultation_result.get("diagnosis")
+                    patient.add_diagnosis(diagnosis, doctor.name)
+                    prescription = consultation_result.get("prescription")
+                    patient.medical_record["prescriptions"].append(prescription)
                     
-                    if consultation_result.get("tests_needed"):
-                        for test in consultation_result["tests_needed"]:
-                            if test in self.medical_tests["Lab_Test"] or test in self.medical_tests["Examination"]:
-                                test_type = "Lab Test" if test in self.medical_tests["Lab_Test"] else "Examination"
-                                needs_tests.append((test_type, test))
-                                patient.medical_record["tests"].append(f"{test} recommended by Dr. {doctor.name}")
-                                print(self._format_console_message("RECOMMEND", f"[{thread_name}] {test} recommended"))
-                    else:
-                        diagnosis = consultation_result.get("diagnosis")
-                        patient.add_diagnosis(diagnosis, doctor.name)
-                        prescription = consultation_result.get("prescription")
-                        patient.medical_record["prescriptions"].append(prescription)
-                        
-                        print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Diagnosed: {diagnosis}"))
-                        print(self._format_console_message("PRESCRIPTION", f"[{thread_name}] Prescribed: {prescription}"))
-                
-                except json.JSONDecodeError as e:
-                    logger.error(self._format_log_entry("CONSULTATION_JSON_ERROR", 
-                        f"[Thread: {thread_name}] JSON decode error: {e}"))
-                
-                doctor.end_consultation()
-                return needs_tests
+                    print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Diagnosed: {diagnosis}"))
+                    print(self._format_console_message("PRESCRIPTION", f"[{thread_name}] Prescribed: {prescription}"))
+            
+            except json.JSONDecodeError as e:
+                logger.error(self._format_log_entry("CONSULTATION_JSON_ERROR", 
+                    f"[Thread: {thread_name}] JSON decode error: {e}"))
+            
+            # End consultation (releases the doctor)
+            doctor.end_consultation()
+            return needs_tests
         
         finally:
             self.release_room("consultation")
@@ -842,56 +883,62 @@ class ThreadSafeHospital:
         finally:
             self.release_room("lab")
 
-    def _simulate_follow_up_consultation_threaded(self, patient) -> bool:
-        """Thread-safe follow-up consultation."""
+    def _simulate_follow_up_consultation_threaded_fixed(self, patient) -> bool:
+        """
+        FIXED: Thread-safe follow-up consultation with atomic doctor assignment.
+        """
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 5: Follow-up Consultation"))
         
-        doctor = self.find_available_doctor(timeout=30.0)
+        # Use atomic doctor assignment
+        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department, timeout=30.0)
         if not doctor:
             logger.warning(self._format_log_entry("FOLLOWUP_FAILED", 
                 f"[Thread: {thread_name}] No doctor available for follow-up"))
             return False
         
         if not self.allocate_room("consultation", timeout=30.0):
+            # Release doctor since we couldn't get a room
+            doctor.end_consultation()
             return False
         
         try:
-            if doctor.start_consultation(patient):
-                print(self._format_console_message("REVIEW", 
-                    f"[{thread_name}] Dr. {doctor.name} reviewing test results"))
+            # Doctor is already reserved via atomic assignment
+            print(self._format_console_message("REVIEW", 
+                f"[{thread_name}] Dr. {doctor.name} reviewing test results"))
+            
+            time.sleep(1)
+            
+            # LLM follow-up consultation
+            follow_up_prompt = FOLLOW_UP_CONSULTATION_PROMPT.format(
+                doctor_name=doctor.name, doctor_specialty=doctor.specialty,
+                doctor_years_experience=doctor.years_experience, patient_name=patient.name,
+                patient_age=patient.age, patient_gender=patient.gender,
+                patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
+                consultation_history=patient.consultation_history, medical_record=patient.medical_record
+            )
+            
+            llm_response = self.llm.get_completion(prompt=follow_up_prompt)
+            
+            try:
+                response = llm_response.split("```json")[1].split("```")[0].strip()
+                follow_up_result = json.loads(response)
                 
-                time.sleep(1)
+                diagnosis = follow_up_result.get("diagnosis")
+                patient.add_diagnosis(diagnosis, doctor.name)
+                prescription = follow_up_result.get("prescription")
+                patient.medical_record["prescriptions"].append(prescription)
                 
-                # LLM follow-up consultation
-                follow_up_prompt = FOLLOW_UP_CONSULTATION_PROMPT.format(
-                    doctor_name=doctor.name, doctor_specialty=doctor.specialty,
-                    doctor_years_experience=doctor.years_experience, patient_name=patient.name,
-                    patient_age=patient.age, patient_gender=patient.gender,
-                    patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
-                    consultation_history=patient.consultation_history, medical_record=patient.medical_record
-                )
+                print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Final diagnosis: {diagnosis}"))
+                print(self._format_console_message("TREATMENT", f"[{thread_name}] Treatment prescribed"))
                 
-                llm_response = self.llm.get_completion(prompt=follow_up_prompt)
-                
-                try:
-                    response = llm_response.split("```json")[1].split("```")[0].strip()
-                    follow_up_result = json.loads(response)
-                    
-                    diagnosis = follow_up_result.get("diagnosis")
-                    patient.add_diagnosis(diagnosis, doctor.name)
-                    prescription = follow_up_result.get("prescription")
-                    patient.medical_record["prescriptions"].append(prescription)
-                    
-                    print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Final diagnosis: {diagnosis}"))
-                    print(self._format_console_message("TREATMENT", f"[{thread_name}] Treatment prescribed"))
-                    
-                except json.JSONDecodeError as e:
-                    logger.error(self._format_log_entry("FOLLOWUP_JSON_ERROR", 
-                        f"[Thread: {thread_name}] JSON decode error: {e}"))
-                
-                doctor.end_consultation()
-                return True
+            except json.JSONDecodeError as e:
+                logger.error(self._format_log_entry("FOLLOWUP_JSON_ERROR", 
+                    f"[Thread: {thread_name}] JSON decode error: {e}"))
+            
+            # End consultation (releases the doctor)
+            doctor.end_consultation()
+            return True
         
         finally:
             self.release_room("consultation")

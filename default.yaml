@@ -2,7 +2,7 @@
 # This file defines all system parameters and settings
 
 patient_data:
-  number_of_patients: 8
+  number_of_patients: 20
   patient_info:
     - id
     - name
@@ -42,7 +42,7 @@ patient_data:
     - "consultations"
 
 doctor_data:
-  number_of_doctors: 6
+  number_of_doctors: 12
   doctor_info:
     - name
     - gender
@@ -90,8 +90,8 @@ hospital_data:
   
   # Room configuration: room_type: total_count
   rooms:
-    consultation: 6
-    waiting: 2
+    consultation: 8
+    waiting: 4
     triage: 2
     registration: 2
     lab: 2
@@ -101,7 +101,7 @@ hospital_data:
   
   # Doctors per department (used for capacity planning)
   doctor_per_department:
-    General: 2
+    General: 8
     Cardiologist: 1
     Dermatologist: 1
     Neurologist: 1
@@ -144,8 +144,8 @@ system_settings:
     enable_export: true
   
   hospital_operations:
-    operating_hours_start: "07:00"
-    operating_hours_end: "19:00"
+    operating_hours_start: "08:00"
+    operating_hours_end: "22:00"
     emergency_24_7: true
     max_daily_capacity: 200
     
