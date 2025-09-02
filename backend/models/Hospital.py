@@ -29,6 +29,7 @@ class ThreadSafeHospital:
         """
         config = get_config()
         self.llm = LLM(llm_config=config.llm_config)
+        self.timeout = config.hospital_data.timeout
         
         # Basic hospital information
         self.id = str(uuid.uuid4())
@@ -171,10 +172,18 @@ class ThreadSafeHospital:
                 if (specialty_lower in dept_specialization or 
                     dept_specialization in specialty_lower or
                     specialty_lower == dept_name.lower()):
+
                     dept_info["staff"].append(doctor)
                     assigned = True
                     logger.info(self._format_log_entry("DOCTOR_ASSIGNMENT", 
                         f"Dr. {doctor.name} ({doctor.specialty}) assigned to {dept_name} department"))
+                    
+                # Also add to Emergency if General
+                if "Emergency" in self.departments and doctor.specialty == "General":
+                    self.departments["Emergency"]["staff"].append(doctor)
+                    logger.info(self._format_log_entry("DOCTOR_ASSIGNMENT", 
+                        f"Dr. {doctor.name} ({doctor.specialty}) ALSO assigned to Emergency department"))
+                    
                     break
             
             if not assigned:
@@ -246,11 +255,11 @@ class ThreadSafeHospital:
             
             return True
 
-    def allocate_room(self, room_type: str, timeout: float = 120.0) -> bool:
+    def allocate_room(self, room_type: str) -> bool:
         """Thread-safe room allocation with timeout."""
         start_time = time.time()
         
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < self.timeout:
             with self.rooms_lock:
                 if room_type not in self.rooms:
                     logger.error(self._format_log_entry("ROOM_ERROR", f"Room type '{room_type}' does not exist"))
@@ -315,11 +324,11 @@ class ThreadSafeHospital:
             
             return True
 
-    def allocate_device(self, device_name: str, timeout: float = 120.0) -> bool:
+    def allocate_device(self, device_name: str) -> bool:
         """Thread-safe device allocation with timeout."""
         start_time = time.time()
         
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < self.timeout:
             with self.devices_lock:
                 if device_name not in self.medical_devices:
                     logger.warning(self._format_log_entry("DEVICE_ERROR", f"Medical device '{device_name}' not available"))
@@ -358,7 +367,7 @@ class ThreadSafeHospital:
                 f"[Thread: {threading.current_thread().name}] Released {device_name}"))
             return True
 
-    def find_and_reserve_doctor_atomic(self, patient, specialty: str = None, department: str = None, timeout: float = 120.0):
+    def find_and_reserve_doctor_atomic(self, patient, specialty: str = None, department: str = None):
         """
         FIXED: Thread-safe atomic doctor finding and reservation.
         This method combines doctor finding and reservation into a single atomic operation
@@ -368,7 +377,6 @@ class ThreadSafeHospital:
             patient: The patient object that needs a doctor
             specialty (str, optional): Required doctor specialty
             department (str, optional): Required department
-            timeout (float): Maximum time to wait for an available doctor
             
         Returns:
             Doctor object if successfully reserved, None if timeout reached
@@ -376,7 +384,7 @@ class ThreadSafeHospital:
         start_time = time.time()
         thread_name = threading.current_thread().name
         
-        while time.time() - start_time < timeout:
+        while time.time() - start_time < self.timeout:
             with self.doctors_lock:  # Global lock for doctor operations
                 # Find potential doctors
                 potential_doctors = []
@@ -418,7 +426,7 @@ class ThreadSafeHospital:
         logger.warning(self._format_log_entry("DOCTOR_TIMEOUT", 
             f"[Thread: {thread_name}] Timeout finding available doctor for {patient.name}"))
         print(self._format_console_message("TIMEOUT", 
-            f"[{thread_name}] No doctors available for {patient.name} within {timeout}s"))
+            f"[{thread_name}] No doctors available for {patient.name} within {self.timeout}s"))
         return None
 
     def bill_patient(self, patient, amount: float, service_description: str) -> str:
@@ -579,7 +587,7 @@ class ThreadSafeHospital:
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 1: Triage Assessment"))
         
-        if not self.allocate_room("triage", timeout=30.0):
+        if not self.allocate_room("triage"):
             logger.warning(self._format_log_entry("TRIAGE_FAILED", 
                 f"[Thread: {thread_name}] Could not allocate triage room"))
             return False
@@ -637,7 +645,7 @@ class ThreadSafeHospital:
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 2: Registration"))
         
-        if not self.allocate_room("registration", timeout=30.0):
+        if not self.allocate_room("registration"):
             return False
         
         try:
@@ -669,7 +677,7 @@ class ThreadSafeHospital:
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 3: Consultation"))
         
         # Waiting room
-        if self.allocate_room("waiting", timeout=30.0):
+        if self.allocate_room("waiting"):
             patient.update_status("Waiting")
             wait_time = random.randint(1, 3) * patient.priority / 3
             print(self._format_console_message("WAIT", 
@@ -678,7 +686,7 @@ class ThreadSafeHospital:
             self.release_room("waiting")
         
         # This combines finding and reserving into a single operation
-        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department, timeout=30.0)
+        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department)
         if not doctor:
             logger.error(self._format_log_entry("CONSULTATION_ERROR", 
                 f"[Thread: {thread_name}] No doctors available for {patient.name}"))
@@ -687,7 +695,7 @@ class ThreadSafeHospital:
             return None
         
         # Allocate consultation room
-        if not self.allocate_room("consultation", timeout=30.0):
+        if not self.allocate_room("consultation"):
             # Release the doctor since we couldn't get a room
             doctor.end_consultation()
             logger.error(self._format_log_entry("CONSULTATION_ERROR", 
@@ -783,14 +791,14 @@ class ThreadSafeHospital:
         thread_name = threading.current_thread().name
         print(self._format_console_message("TEST", f"[{thread_name}] Performing {test_name}"))
         
-        if not self.allocate_room("examination", timeout=30.0):
+        if not self.allocate_room("examination"):
             logger.warning(self._format_log_entry("EXAMINATION_FAILED", 
                 f"[Thread: {thread_name}] Could not allocate examination room for {test_name}"))
             return 0
         
         try:
             # Try to allocate device
-            device_allocated = self.allocate_device(test_name + " Machine", timeout=30.0)
+            device_allocated = self.allocate_device(test_name + " Machine")
             
             patient.update_status("Undergoing Examination")
             time.sleep(1)  # Reduced for simulation
@@ -838,7 +846,7 @@ class ThreadSafeHospital:
         thread_name = threading.current_thread().name
         print(self._format_console_message("TEST", f"[{thread_name}] Processing {test_name}"))
         
-        if not self.allocate_room("lab", timeout=30.0):
+        if not self.allocate_room("lab"):
             logger.warning(self._format_log_entry("LAB_FAILED", 
                 f"[Thread: {thread_name}] Could not allocate lab room for {test_name}"))
             return 0
@@ -891,13 +899,13 @@ class ThreadSafeHospital:
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 5: Follow-up Consultation"))
         
         # Use atomic doctor assignment
-        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department, timeout=30.0)
+        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department)
         if not doctor:
             logger.warning(self._format_log_entry("FOLLOWUP_FAILED", 
                 f"[Thread: {thread_name}] No doctor available for follow-up"))
             return False
         
-        if not self.allocate_room("consultation", timeout=30.0):
+        if not self.allocate_room("consultation"):
             # Release doctor since we couldn't get a room
             doctor.end_consultation()
             return False
@@ -948,7 +956,7 @@ class ThreadSafeHospital:
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 6: Pharmacy"))
         
-        if not self.allocate_room("pharmacy", timeout=30.0):
+        if not self.allocate_room("pharmacy"):
             logger.warning(self._format_log_entry("PHARMACY_FAILED", 
                 f"[Thread: {thread_name}] Could not allocate pharmacy"))
             return 0

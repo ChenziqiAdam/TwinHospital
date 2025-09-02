@@ -25,6 +25,8 @@ class HospitalConfig(BaseModel):
     doctor_per_department: Dict[str, int] = Field(default_factory=dict)
     devices: List[str] = Field(default_factory=list)
     tests: Dict[str, List[str]] = Field(default_factory=dict)
+    operation_hours: Dict[str, Any] = Field(default_factory=dict)
+    timeout: float
 
 class LLMConfig(BaseModel):
     """Configuration for the language model."""

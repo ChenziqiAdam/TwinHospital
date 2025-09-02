@@ -515,7 +515,7 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
         symptoms = ', '.join(patient_info.get('symptoms', [])) or 'None reported'
         medical_history = ', '.join(patient_info.get('medical_history', [])) or 'None'
         insurance_status = "Insured" if patient_info.get('insurance', False) else "Uninsured"
-        assigned_departments = patient_info.get('assigned_departments', 'General') or 'General'
+        assigned_department = patient_info.get('assigned_department', 'General') or 'General'
         
         # Get diagnosis
         diagnoses = medical_record.get('diagnoses', [])
@@ -548,7 +548,7 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                                     <li><strong>Waiting Time:</strong> {patient.get('waiting_time_seconds', 0)} seconds</li>
                                     <li><strong>Symptoms:</strong> {symptoms}</li>
                                     <li><strong>Medical History:</strong> {medical_history}</li>
-                                    <li><strong>Assigned Departments:</strong> {assigned_departments}</li>
+                                    <li><strong>Assigned Departments:</strong> {assigned_department}</li>
                                 </ul>
                             </div>
                             
@@ -897,7 +897,7 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
 # Example usage
 if __name__ == "__main__":
     # Replace with your actual JSON file path
-    json_file = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/threaded_hospital_simulation_20250902_094052.json"
+    json_file = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/threaded_hospital_simulation_20250902_112412.json"
     
     try:
         output_path = generate_hospital_report(json_file)

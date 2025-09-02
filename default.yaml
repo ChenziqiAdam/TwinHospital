@@ -88,10 +88,17 @@ hospital_data:
     - expenses
     - billing_records
   
+  operation_hours:
+    start: 8
+    end: 22
+    duration: 14
+
+  timeout: 360
+  
   # Room configuration: room_type: total_count
   rooms:
     consultation: 8
-    waiting: 4
+    waiting: 8
     triage: 2
     registration: 2
     lab: 2
@@ -128,33 +135,6 @@ hospital_data:
       - "MRI"
       - "CT"
       - "Ultrasound"
-
-# System-wide settings
-system_settings:
-  logging:
-    level: "INFO"
-    console_output: true
-    file_output: true
-    detailed_logs: true
-  
-  simulation:
-    real_time_delays: true
-    patient_processing_speed: "normal"  # slow, normal, fast
-    enable_statistics: true
-    enable_export: true
-  
-  hospital_operations:
-    operating_hours_start: "08:00"
-    operating_hours_end: "22:00"
-    emergency_24_7: true
-    max_daily_capacity: 200
-    
-  financial:
-    currency: "USD"
-    consultation_base_fee: 150.0
-    examination_fee_range: [100, 400]
-    lab_test_fee_range: [50, 250]
-    prescription_fee_range: [20, 150]
 
 # llm:
 #   model_name: "gpt-4"
