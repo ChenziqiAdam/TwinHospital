@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 from ..config import get_config
 from ..providers.llm import LLM
 from ..prompts.triage_nurse import TRIAGE_NURSE_PROMPT
@@ -19,13 +20,17 @@ from ..prompts.follow_up_consultation_doctor import FOLLOW_UP_CONSULTATION_PROMP
 logger = logging.getLogger(__name__)
 
 class ThreadSafeHospital:
-    def __init__(self, name: str, doctors: List = None):
+    def __init__(self, name: str, doctors: List = None, continuous_export: bool = True, 
+                 export_interval: int = 30, export_on_events: bool = True):
         """
-        Initializes the Hospital instance with thread-safe resource management.
+        Initializes the Hospital instance with thread-safe resource management and continuous export.
         
         Args:
             name (str): The name of the hospital.
             doctors (list, optional): A list of Doctor objects in the hospital.
+            continuous_export (bool): Enable continuous JSON export during simulation.
+            export_interval (int): Seconds between automatic exports (if continuous_export=True).
+            export_on_events (bool): Export immediately on key events (patient admission, discharge, etc.).
         """
         config = get_config()
         self.llm = LLM(llm_config=config.llm_config)
@@ -45,6 +50,16 @@ class ThreadSafeHospital:
         self.billing_lock = threading.RLock()  # Reentrant lock for billing operations
         self.statistics_lock = threading.RLock()  # Reentrant lock for statistics
         self.patients_lock = threading.RLock()  # Reentrant lock for patient management
+        
+        # NEW: Continuous export configuration and locks
+        self.export_lock = threading.RLock()  # Lock for export operations
+        self.continuous_export_enabled = continuous_export
+        self.export_interval = export_interval
+        self.export_on_events = export_on_events
+        self.export_file_path = None
+        self.last_export_time = datetime.now()
+        self.export_thread = None
+        self.export_shutdown_event = threading.Event()
         
         # Initialize resources with thread safety in mind
         self.rooms = self._initialize_rooms()
@@ -77,12 +92,403 @@ class ThreadSafeHospital:
         # Thread pool for patient processing
         self.max_concurrent_patients = min(len(self.doctors) * 2, 10)  # Limit concurrent patients
         
+        # NEW: Initialize continuous export system
+        if self.continuous_export_enabled:
+            self._initialize_continuous_export()
+        
         # Log hospital initialization
         logger.info(self._format_log_entry("INITIALIZATION", 
             f"Thread-safe hospital '{name}' initialized with {len(self.doctors)} doctors and {len(self.departments)} departments"))
+        logger.info(self._format_log_entry("CONTINUOUS_EXPORT", 
+            f"Continuous export: {'Enabled' if continuous_export else 'Disabled'}, Interval: {export_interval}s"))
         print(self._format_console_header())
         print(self._format_console_message("INIT", 
             f"Welcome to {self.name}! Thread-safe hospital system initialized"))
+        if continuous_export:
+            print(self._format_console_message("EXPORT", 
+                f"Continuous export enabled - Updates every {export_interval}s"))
+
+    def _initialize_continuous_export(self) -> None:
+        """Initialize the continuous export system."""
+        # Create exports directory
+        export_dir = Path("exports")
+        export_dir.mkdir(exist_ok=True)
+        
+        # Set up continuous export file path
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        self.export_file_path = export_dir / f"continuous_hospital_simulation_{timestamp}.json"
+        
+        # Create initial export file with metadata
+        initial_data = {
+            "simulation_metadata": {
+                "hospital_name": self.name,
+                "hospital_id": self.id,
+                "simulation_start": datetime.now().isoformat(),
+                "continuous_export_enabled": True,
+                "export_interval_seconds": self.export_interval,
+                "last_update": datetime.now().isoformat()
+            },
+            "real_time_data": {
+                "patients_processed": [],
+                "active_patients": {},
+                "hospital_statistics": {},
+                "resource_logs": [],
+                "patient_logs": [],
+                "billing_records": []
+            }
+        }
+        
+        with open(self.export_file_path, 'w', encoding='utf-8') as f:
+            json.dump(initial_data, f, indent=2, default=self._json_serializer)
+        
+        # Start background export thread if interval-based export is enabled
+        if self.export_interval > 0:
+            self.export_thread = threading.Thread(
+                target=self._continuous_export_worker,
+                name="ContinuousExport",
+                daemon=True
+            )
+            self.export_thread.start()
+        
+        logger.info(self._format_log_entry("EXPORT_INIT", 
+            f"Continuous export initialized - File: {self.export_file_path}"))
+
+    def _continuous_export_worker(self) -> None:
+        """Background worker thread for continuous export."""
+        logger.info(self._format_log_entry("EXPORT_WORKER", "Continuous export worker started"))
+        
+        while not self.export_shutdown_event.wait(self.export_interval):
+            try:
+                self._update_continuous_export("scheduled_update")
+            except Exception as e:
+                logger.error(self._format_log_entry("EXPORT_ERROR", 
+                    f"Error in continuous export worker: {str(e)}"))
+        
+        logger.info(self._format_log_entry("EXPORT_WORKER", "Continuous export worker stopped"))
+
+    def _update_continuous_export(self, trigger_event: str = "manual") -> None:
+        """Update the continuous export JSON file with current state."""
+        if not self.continuous_export_enabled or not self.export_file_path:
+            return
+        
+        with self.export_lock:
+            try:
+                # Gather current state with thread-safe locks
+                current_state = self._gather_current_state()
+                
+                # Read existing file
+                try:
+                    with open(self.export_file_path, 'r', encoding='utf-8') as f:
+                        export_data = json.load(f)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    export_data = {"simulation_metadata": {}, "real_time_data": {}}
+                
+                # Update metadata
+                export_data["simulation_metadata"].update({
+                    "last_update": datetime.now().isoformat(),
+                    "update_trigger": trigger_event,
+                    "updates_count": export_data["simulation_metadata"].get("updates_count", 0) + 1
+                })
+                
+                # Update real-time data
+                export_data["real_time_data"] = current_state
+                
+                # Write updated data atomically (write to temp file then rename)
+                temp_file_path = self.export_file_path.with_suffix('.tmp')
+                with open(temp_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(export_data, f, indent=2, default=self._json_serializer)
+                
+                # Atomic rename
+                temp_file_path.replace(self.export_file_path)
+                
+                self.last_export_time = datetime.now()
+                
+                logger.debug(self._format_log_entry("EXPORT_UPDATE", 
+                    f"Continuous export updated - Trigger: {trigger_event}"))
+                
+            except Exception as e:
+                logger.exception(self._format_log_entry("EXPORT_ERROR", 
+                    f"Failed to update continuous export."))
+
+    def _gather_current_state(self) -> Dict[str, Any]:
+        """Gather current hospital state for export (thread-safe)."""
+        current_state = {}
+        
+        # Patient information
+        with self.patients_lock:
+            current_state["patients_processed"] = [
+                patient.get_medical_summary() for patient in self.patients.values()
+            ]
+            current_state["active_patients"] = {
+                pid: {
+                    "name": patient.name,
+                    "status": patient.status,
+                    "priority": patient.priority,
+                    "arrival_time": patient.arrival_time.isoformat(),
+                    "assigned_department": patient.assigned_department
+                }
+                for pid, patient in self.active_patients.items()
+            }
+        
+        # Hospital statistics
+        with self.statistics_lock:
+            current_state["hospital_statistics"] = self.generate_hospital_statistics()
+            current_state["daily_statistics"] = self.daily_statistics.copy()
+        
+        # Resource logs
+        current_state["resource_logs"] = self.resource_logs[-50:]  # Last 50 entries
+        current_state["patient_logs"] = self.patient_logs[-50:]    # Last 50 entries
+        
+        # Financial information
+        with self.billing_lock:
+            current_state["billing_records"] = self.billing_records[-20:]  # Last 20 bills
+            current_state["financial_summary"] = {
+                "total_revenue": self.revenue,
+                "total_expenses": self.expenses,
+                "profit": self.revenue - self.expenses,
+                "bills_count": len(self.billing_records)
+            }
+        
+        # Doctor statuses
+        with self.doctors_lock:
+            current_state["doctor_statuses"] = [
+                {
+                    "name": doctor.name,
+                    "specialty": doctor.specialty,
+                    "status": doctor.status,
+                    "patients_seen_today": doctor.patients_seen_today,
+                    "is_available": doctor.is_available()
+                }
+                for doctor in self.doctors
+            ]
+        
+        # Room utilization
+        with self.rooms_lock:
+            current_state["room_utilization"] = self.rooms.copy()
+        
+        # Timestamp
+        current_state["snapshot_time"] = datetime.now().isoformat()
+        
+        return current_state
+
+    def _json_serializer(self, obj):
+        """Custom JSON serializer for datetime objects."""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, timedelta):
+            return str(obj)
+        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
+
+    def _trigger_export_update(self, event_type: str) -> None:
+        """Trigger an export update if event-based export is enabled."""
+        if self.export_on_events and self.continuous_export_enabled:
+            # Run export update in a separate thread to avoid blocking main operations
+            export_thread = threading.Thread(
+                target=self._update_continuous_export,
+                args=(event_type,),
+                daemon=True
+            )
+            export_thread.start()
+
+    # Modify existing methods to include export triggers
+
+    def admit_patient(self, patient) -> bool:
+        """Thread-safe patient admission with continuous export."""
+        with self.patients_lock:
+            if patient.id in self.active_patients:
+                logger.warning(self._format_log_entry("ADMISSION_DUPLICATE", 
+                    f"Patient {patient.id} ({patient.name}) is already admitted"))
+                return False
+            
+            self.patients[patient.id] = patient
+            self.active_patients[patient.id] = patient
+            
+            with self.statistics_lock:
+                self.daily_statistics["patients_processed"] += 1
+            
+            admission_record = {
+                "event": "admission", "patient_id": patient.id, "patient_name": patient.name,
+                "timestamp": datetime.now(), "priority": patient.priority, "insurance": patient.insurance,
+                "thread_id": threading.current_thread().name
+            }
+            
+            self.patient_logs.append(admission_record)
+            
+            logger.info(self._format_log_entry("PATIENT_ADMISSION", 
+                f"[Thread: {threading.current_thread().name}] Patient {patient.id} ({patient.name}) admitted"))
+            print(self._format_console_message("ADMISSION", 
+                f"[{threading.current_thread().name}] Admitting {patient.name} - Priority {patient.priority}"))
+            
+            # NEW: Trigger export update
+            self._trigger_export_update("patient_admission")
+            
+            return True
+
+    def discharge_patient(self, patient) -> bool:
+        """Thread-safe patient discharge with continuous export."""
+        with self.patients_lock:
+            if patient.id not in self.active_patients:
+                logger.warning(self._format_log_entry("DISCHARGE_ERROR", 
+                    f"Patient {patient.id} ({patient.name}) is not currently admitted"))
+                return False
+            
+            patient.discharge()
+            del self.active_patients[patient.id]
+            
+            total_stay = (patient.discharge_time - patient.arrival_time).total_seconds() / 3600
+            
+            discharge_record = {
+                "event": "discharge", "patient_id": patient.id, "patient_name": patient.name,
+                "timestamp": patient.discharge_time, "total_stay_hours": round(total_stay, 2),
+                "diagnoses_count": len(patient.medical_record.get("diagnoses", [])),
+                "prescriptions_count": len(patient.medical_record.get("prescriptions", [])),
+                "thread_id": threading.current_thread().name
+            }
+            
+            self.patient_logs.append(discharge_record)
+            
+            logger.info(self._format_log_entry("PATIENT_DISCHARGE", 
+                f"[Thread: {threading.current_thread().name}] Patient {patient.id} discharged after {total_stay:.1f} hours"))
+            print(self._format_console_message("DISCHARGE", 
+                f"[{threading.current_thread().name}] {patient.name} discharged after {total_stay:.1f} hours"))
+            
+            # NEW: Trigger export update
+            self._trigger_export_update("patient_discharge")
+            
+            return True
+
+    def bill_patient(self, patient, amount: float, service_description: str) -> str:
+        """Thread-safe billing with continuous export."""
+        with self.billing_lock:
+            bill_id = str(uuid.uuid4())[:8]
+            bill = {
+                "bill_id": bill_id, "patient_id": patient.id, "patient_name": patient.name,
+                "amount": amount, "service": service_description, "timestamp": datetime.now(),
+                "status": "Pending", "insurance": patient.insurance, "department": "General",
+                "thread_id": threading.current_thread().name
+            }
+            
+            self.billing_records.append(bill)
+            
+            logger.info(self._format_log_entry("BILLING", 
+                f"[Thread: {threading.current_thread().name}] Bill {bill_id} created - ${amount} for {service_description}"))
+            
+            # NEW: Trigger export update for significant financial events
+            if amount > 100:  # Only trigger for significant bills
+                self._trigger_export_update("billing_event")
+            
+            return bill_id
+
+    def process_payment(self, bill_id: str, amount_paid: float) -> bool:
+        """Thread-safe payment processing with continuous export."""
+        with self.billing_lock:
+            for bill in self.billing_records:
+                if bill["bill_id"] == bill_id:
+                    if amount_paid >= bill["amount"]:
+                        bill["status"] = "Paid"
+                        bill["amount_paid"] = amount_paid
+                        bill["payment_time"] = datetime.now()
+                        bill["change"] = amount_paid - bill["amount"]
+                        
+                        self.revenue += bill["amount"]
+                        
+                        logger.info(self._format_log_entry("PAYMENT", 
+                            f"[Thread: {threading.current_thread().name}] Payment processed - Bill {bill_id}: ${amount_paid}"))
+                        
+                        # NEW: Trigger export update for payments
+                        self._trigger_export_update("payment_processed")
+                        return True
+                    else:
+                        bill["status"] = "Partial Payment"
+                        bill["amount_paid"] = amount_paid
+                        bill["payment_time"] = datetime.now()
+                        bill["remaining_balance"] = bill["amount"] - amount_paid
+                        
+                        self.revenue += amount_paid
+                        return True
+            
+            logger.error(self._format_log_entry("PAYMENT_ERROR", f"Bill {bill_id} not found"))
+            return False
+
+    def get_continuous_export_status(self) -> Dict[str, Any]:
+        """Get current status of continuous export system."""
+        with self.export_lock:
+            return {
+                "enabled": self.continuous_export_enabled,
+                "export_file_path": str(self.export_file_path) if self.export_file_path else None,
+                "export_interval": self.export_interval,
+                "export_on_events": self.export_on_events,
+                "last_export_time": self.last_export_time.isoformat(),
+                "export_thread_active": self.export_thread is not None and self.export_thread.is_alive(),
+                "file_exists": self.export_file_path.exists() if self.export_file_path else False,
+                "file_size_bytes": self.export_file_path.stat().st_size if self.export_file_path and self.export_file_path.exists() else 0
+            }
+
+    def enable_continuous_export(self, export_interval: int = 30, export_on_events: bool = True) -> bool:
+        """Enable continuous export if it was disabled."""
+        if self.continuous_export_enabled:
+            logger.warning(self._format_log_entry("EXPORT_WARNING", "Continuous export already enabled"))
+            return False
+        
+        self.continuous_export_enabled = True
+        self.export_interval = export_interval
+        self.export_on_events = export_on_events
+        
+        try:
+            self._initialize_continuous_export()
+            logger.info(self._format_log_entry("EXPORT_ENABLED", 
+                f"Continuous export enabled - Interval: {export_interval}s, Events: {export_on_events}"))
+            return True
+        except Exception as e:
+            logger.error(self._format_log_entry("EXPORT_ENABLE_ERROR", 
+                f"Failed to enable continuous export: {str(e)}"))
+            self.continuous_export_enabled = False
+            return False
+
+    def disable_continuous_export(self) -> bool:
+        """Disable continuous export system."""
+        if not self.continuous_export_enabled:
+            return False
+        
+        with self.export_lock:
+            self.continuous_export_enabled = False
+            self.export_shutdown_event.set()
+            
+            if self.export_thread and self.export_thread.is_alive():
+                self.export_thread.join(timeout=5)
+            
+            # Final export before shutdown
+            self._update_continuous_export("shutdown")
+            
+            logger.info(self._format_log_entry("EXPORT_DISABLED", "Continuous export disabled"))
+            return True
+
+    def force_export_update(self) -> bool:
+        """Force an immediate export update."""
+        if not self.continuous_export_enabled:
+            logger.warning(self._format_log_entry("EXPORT_WARNING", "Continuous export is disabled"))
+            return False
+        
+        try:
+            self._update_continuous_export("manual_force")
+            logger.info(self._format_log_entry("EXPORT_FORCED", "Manual export update completed"))
+            return True
+        except Exception as e:
+            logger.error(self._format_log_entry("EXPORT_FORCE_ERROR", 
+                f"Failed to force export update: {str(e)}"))
+            return False
+
+    def cleanup_continuous_export(self) -> None:
+        """Clean up continuous export system resources."""
+        if self.continuous_export_enabled:
+            self.disable_continuous_export()
+
+    def __del__(self):
+        """Cleanup when hospital object is destroyed."""
+        try:
+            self.cleanup_continuous_export()
+        except:
+            pass
 
     def _initialize_rooms(self) -> Dict[str, Dict[str, int]]:
         """Initialize room configuration from config file."""

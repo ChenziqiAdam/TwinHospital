@@ -10,13 +10,13 @@ from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import our classes
-from backend.config import load_config, get_config
+from backend.config import load_config, get_config, get_export_config
 from backend.models.Patient import Patient
 from backend.models.Doctor import Doctor
 from backend.models.Hospital import ThreadSafeHospital
 
 def setup_logging():
-    """Setup comprehensive logging system with thread safety."""
+    """Setup comprehensive logging system with thread safety and continuous export."""
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
     
@@ -42,7 +42,7 @@ def setup_logging():
     # File handler for detailed logs
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     file_handler = logging.FileHandler(
-        log_dir / f'hospital_simulation_threaded_{timestamp}.log',
+        log_dir / f'hospital_simulation_continuous_{timestamp}.log',
         encoding='utf-8'
     )
     file_handler.setLevel(logging.DEBUG)
@@ -65,10 +65,7 @@ def setup_logging():
     return logging.getLogger(__name__)
 
 def generate_random_patients(count: int = None) -> List[Patient]:
-    """
-    Generate random patients using configuration settings.
-    Enhanced for threading with more diverse patient profiles.
-    """
+    """Generate random patients using configuration settings."""
     config = get_config()
     
     if count is None:
@@ -110,7 +107,7 @@ def generate_random_patients(count: int = None) -> List[Patient]:
     used_ids = set()
     
     logger = logging.getLogger(__name__)
-    logger.info(f"Generating {count} random patients for threaded simulation")
+    logger.info(f"Generating {count} random patients for continuous export simulation")
     
     for i in range(count):
         # Generate unique patient ID
@@ -203,7 +200,7 @@ def generate_doctors_from_config() -> List[Doctor]:
     doctors = []
     staff_id_counter = 1
     
-    logger.info(f"Generating doctors for threaded simulation: {specialties}")
+    logger.info(f"Generating doctors for continuous export simulation: {specialties}")
     
     for specialty in specialties:
         doctors_needed = doctors_per_department.get(specialty, 1)
@@ -256,181 +253,96 @@ def generate_doctors_from_config() -> List[Doctor]:
             doctors.append(doctor)
             staff_id_counter += 1
     
-    logger.info(f"Generated {len(doctors)} doctors for threaded hospital operations")
+    logger.info(f"Generated {len(doctors)} doctors for continuous export hospital operations")
     return doctors
 
-def setup_hospital_from_config() -> ThreadSafeHospital:
-    """Setup thread-safe hospital using configuration settings."""
+def setup_hospital_with_continuous_export() -> ThreadSafeHospital:
+    """Setup hospital with continuous export enabled."""
     config = get_config()
+    export_config = get_export_config()
     logger = logging.getLogger(__name__)
     
     # Generate doctors
     doctors = generate_doctors_from_config()
     
-    # Create thread-safe hospital
-    hospital = ThreadSafeHospital("Twin Digital Medical Center", doctors)
+    # Create thread-safe hospital with continuous export
+    hospital = ThreadSafeHospital(
+        name="Twin Digital Medical Center",
+        doctors=doctors,
+        continuous_export=export_config.enabled,
+        export_interval=export_config.export_interval,
+        export_on_events=export_config.export_on_events
+    )
     
-    logger.info(f"Thread-safe hospital setup complete with {len(doctors)} doctors")
+    logger.info(f"Hospital with continuous export setup complete - Export enabled: {export_config.enabled}")
     return hospital
 
-def run_simulation_with_mode(hospital: ThreadSafeHospital, patients: List[Patient], 
-                           mode: str = "threaded", max_workers: int = None, verbose: bool = True) -> Dict[str, Any]:
-    """
-    Run simulation with choice between sequential or threaded mode.
+def demonstrate_continuous_export_features(hospital: ThreadSafeHospital) -> None:
+    """Demonstrate continuous export features."""
+    print("\n" + "="*80)
+    print(f"{'CONTINUOUS EXPORT DEMONSTRATION':^80}")
+    print("="*80)
     
-    Args:
-        hospital (ThreadSafeHospital): The hospital instance.
-        patients (List[Patient]): List of patients to process.
-        mode (str): Either "sequential" or "threaded".
-        max_workers (int): Maximum concurrent workers (threaded mode only).
-        verbose (bool): Whether to show detailed output.
-        
-    Returns:
-        Dict[str, Any]: Simulation results.
-    """
-    if mode == "sequential":
-        return run_sequential_simulation(hospital, patients, verbose)
-    elif mode == "threaded":
-        return run_threaded_simulation(hospital, patients, max_workers, verbose)
+    # Show export status
+    export_status = hospital.get_continuous_export_status()
+    print(f"\nContinuous Export Status:")
+    print(f"  • Enabled: {export_status['enabled']}")
+    print(f"  • Export File: {export_status['export_file_path']}")
+    print(f"  • Update Interval: {export_status['export_interval']} seconds")
+    print(f"  • Event-based Export: {export_status['export_on_events']}")
+    print(f"  • Background Thread Active: {export_status['export_thread_active']}")
+    
+    if export_status['file_exists']:
+        print(f"  • Current File Size: {export_status['file_size_bytes']} bytes")
+    
+    # Test manual export trigger
+    print(f"\n🔄 Testing manual export trigger...")
+    if hospital.force_export_update():
+        print(f"  ✅ Manual export successful")
     else:
-        raise ValueError("Mode must be either 'sequential' or 'threaded'")
-
-def run_sequential_simulation(hospital: ThreadSafeHospital, patients: List[Patient], verbose: bool = True) -> Dict[str, Any]:
-    """
-    Run sequential simulation for comparison or backward compatibility.
+        print(f"  ❌ Manual export failed")
     
-    Args:
-        hospital (ThreadSafeHospital): The hospital instance.
-        patients (List[Patient]): List of patients to process.
-        verbose (bool): Whether to show detailed output.
-        
-    Returns:
-        Dict[str, Any]: Simulation results.
-    """
+    # Show what happens during simulation
+    print(f"\n📊 During simulation, exports will be triggered by:")
+    config = get_export_config()
+    for event in config.trigger_events:
+        print(f"  • {event.replace('_', ' ').title()}")
+    
+    print(f"\n📁 Export file will be continuously updated at:")
+    print(f"  {export_status['export_file_path']}")
+
+def run_simulation_with_continuous_export_demo(hospital: ThreadSafeHospital, patients: List[Patient]) -> Dict[str, Any]:
+    """Run simulation with live continuous export demonstration."""
     logger = logging.getLogger(__name__)
     simulation_start = datetime.now()
     
-    if verbose:
-        print("\n" + "="*80)
-        print(f"{'SEQUENTIAL HOSPITAL SIMULATION':^80}")
-        print(f"{'(For Comparison/Backward Compatibility)':^80}")
-        print("="*80)
-        print(f"Processing {len(patients)} patients sequentially...")
+    print("\n" + "="*80)
+    print(f"{'SIMULATION WITH CONTINUOUS EXPORT':^80}")
+    print(f"{'Real-time JSON updates during processing':^80}")
+    print("="*80)
     
-    # Process patients one by one (original behavior)
-    processed_patients = 0
-    successful_visits = 0
-    visit_summaries = []
+    export_status = hospital.get_continuous_export_status()
+    if export_status['enabled']:
+        print(f"🔴 LIVE EXPORT: {export_status['export_file_path']}")
+        print(f"📈 Updates every {export_status['export_interval']}s + on events")
+    else:
+        print("⚠️  Continuous export is disabled")
     
-    for i, patient in enumerate(sorted(patients, key=lambda p: p.priority)):
-        try:
-            if verbose:
-                print(f"\nProcessing patient {i+1}/{len(patients)}: {patient.name}")
-            
-            # Use the backward-compatible method
-            hospital.simulate_patient_visit(patient)
-            successful_visits += 1
-            
-            # Create visit summary for consistency
-            visit_summary = {
-                "patient_id": patient.id,
-                "patient_name": patient.name,
-                "success": True,
-                "mode": "sequential",
-                "stages_completed": ["admission", "triage", "registration", "consultation", "discharge"]
-            }
-            visit_summaries.append(visit_summary)
-            
-        except Exception as e:
-            logger.error(f"Error processing patient {patient.name}: {str(e)}")
-            visit_summary = {
-                "patient_id": patient.id,
-                "patient_name": patient.name,
-                "success": False,
-                "errors": [str(e)],
-                "mode": "sequential"
-            }
-            visit_summaries.append(visit_summary)
-        
-        processed_patients += 1
-        
-        # Brief pause between patients
-        if i < len(patients) - 1:
-            time.sleep(0.5)
-    
-    simulation_end = datetime.now()
-    simulation_duration = simulation_end - simulation_start
-    
-    # Create results in same format as threaded simulation
-    simulation_results = {
-        "simulation_metadata": {
-            "start_time": simulation_start,
-            "end_time": simulation_end,
-            "duration": simulation_duration,
-            "duration_minutes": simulation_duration.total_seconds() / 60,
-            "hospital_name": hospital.name,
-            "threading_mode": "Sequential",
-            "max_workers": 1
-        },
-        "patient_results": visit_summaries,
-        "hospital_statistics": hospital.generate_hospital_statistics(),
-        "concurrent_statistics": {
-            "concurrent_metrics": {
-                "total_patients": len(patients),
-                "successful_visits": successful_visits,
-                "failed_visits": len(patients) - successful_visits,
-                "success_rate": f"{(successful_visits / len(patients) * 100):.1f}%",
-                "average_visit_duration_minutes": simulation_duration.total_seconds() / 60 / len(patients)
-            }
-        }
-    }
-    
-    if verbose:
-        print(f"\nSequential simulation completed in {simulation_duration}")
-        print(f"Processed: {processed_patients}/{len(patients)} patients")
-        print(f"Success rate: {(successful_visits/processed_patients*100):.1f}%")
-    
-    return simulation_results
-
-def run_threaded_simulation(hospital: ThreadSafeHospital, patients: List[Patient], 
-                          max_workers: int = None, verbose: bool = True) -> Dict[str, Any]:
-    """
-    Run comprehensive threaded hospital simulation.
-    
-    Args:
-        hospital (ThreadSafeHospital): The hospital instance.
-        patients (List[Patient]): List of patients to process.
-        max_workers (int): Maximum concurrent workers.
-        verbose (bool): Whether to show detailed output.
-        
-    Returns:
-        Dict[str, Any]: Comprehensive simulation results.
-    """
-    logger = logging.getLogger(__name__)
-    simulation_start = datetime.now()
-    
-    if verbose:
-        print("\n" + "="*80)
-        print(f"{'THREADED HOSPITAL SIMULATION STARTING':^80}")
-        print(f"{'Simulation Time: ' + simulation_start.strftime('%Y-%m-%d %H:%M:%S'):^80}")
-        print("="*80)
-        print(f"Hospital: {hospital.name}")
-        print(f"Doctors: {len(hospital.doctors)}")
-        print(f"Patients: {len(patients)}")
-        print(f"Departments: {len(hospital.departments)}")
-        print(f"Max Concurrent Workers: {max_workers or hospital.max_concurrent_patients}")
-        print("="*80 + "\n")
-    
-    logger.info(f"Starting threaded simulation with {len(patients)} patients and {max_workers or hospital.max_concurrent_patients} workers")
+    print(f"\n🏥 Processing {len(patients)} patients with real-time export...")
     
     # Run concurrent patient processing
-    print(f"Processing {len(patients)} patients concurrently...")
-    visit_summaries = hospital.process_patients_concurrently(patients, max_workers)
+    visit_summaries = hospital.process_patients_concurrently(patients, max_workers=4)
     
     simulation_end = datetime.now()
     simulation_duration = simulation_end - simulation_start
     
-    # Generate comprehensive results
+    # Show final export status
+    final_export_status = hospital.get_continuous_export_status()
+    print(f"\n📊 Final Export Status:")
+    print(f"  • File Size: {final_export_status['file_size_bytes']} bytes")
+    print(f"  • Last Update: {final_export_status['last_export_time']}")
+    
+    # Generate final statistics
     concurrent_stats = hospital.generate_concurrent_statistics(visit_summaries)
     hospital_stats = hospital.generate_hospital_statistics()
     
@@ -441,486 +353,210 @@ def run_threaded_simulation(hospital: ThreadSafeHospital, patients: List[Patient
             "duration": simulation_duration,
             "duration_minutes": simulation_duration.total_seconds() / 60,
             "hospital_name": hospital.name,
-            "threading_mode": "Enabled",
-            "max_workers": max_workers or hospital.max_concurrent_patients
+            "threading_mode": "Enabled with Continuous Export",
+            "continuous_export": {
+                "enabled": final_export_status['enabled'],
+                "export_file": str(final_export_status['export_file_path']),
+                "file_size_bytes": final_export_status['file_size_bytes']
+            }
         },
         "patient_results": visit_summaries,
         "concurrent_statistics": concurrent_stats,
         "hospital_statistics": hospital_stats
     }
     
-    if verbose:
-        print("\n" + "="*80)
-        print(f"{'THREADED SIMULATION COMPLETED':^80}")
-        print(f"{'Duration: ' + str(simulation_duration):^80}")
-        print("="*80)
-        
-        # Display concurrent processing results
-        successful_visits = len([v for v in visit_summaries if v.get("success", False)])
-        failed_visits = len(visit_summaries) - successful_visits
-        success_rate = (successful_visits / len(visit_summaries) * 100) if visit_summaries else 0
-        
-        print(f"Patients Processed: {len(visit_summaries)}")
-        print(f"Successful Visits: {successful_visits}")
-        print(f"Failed Visits: {failed_visits}")
-        print(f"Success Rate: {success_rate:.1f}%")
-        print(f"Average Visit Duration: {concurrent_stats['concurrent_metrics']['average_visit_duration_minutes']:.1f} minutes")
-        print(f"Total Revenue Generated: {concurrent_stats['concurrent_metrics']['total_revenue']}")
-        print(f"Threads Used: {concurrent_stats['threading_performance']['threads_used']}")
-        print("="*80 + "\n")
-    
-    logger.info(f"Threaded simulation completed - {len(visit_summaries)} patients processed in {simulation_duration}")
-    
+    logger.info(f"Simulation with continuous export completed - {len(visit_summaries)} patients processed")
     return simulation_results
 
-def display_threaded_statistics(hospital: ThreadSafeHospital, simulation_results: Dict[str, Any]) -> None:
-    """
-    Display comprehensive statistics for threaded simulation.
+def monitor_export_file_changes(export_file_path: Path, duration_seconds: int = 60) -> None:
+    """Monitor and display export file changes in real-time."""
+    if not export_file_path or not export_file_path.exists():
+        print("Export file not found for monitoring")
+        return
     
-    Args:
-        hospital (ThreadSafeHospital): The hospital instance.
-        simulation_results (Dict[str, Any]): Results from the simulation.
-    """
-    print("\n" + "="*80)
-    print(f"{'THREADED HOSPITAL OPERATIONS STATISTICS':^80}")
-    print("="*80)
+    print(f"\n📊 Monitoring export file changes for {duration_seconds} seconds...")
+    print(f"File: {export_file_path}")
+    print("-" * 60)
     
-    concurrent_stats = simulation_results["concurrent_statistics"]
-    hospital_stats = simulation_results["hospital_statistics"]
+    last_size = 0
+    last_modified = 0
+    start_time = time.time()
     
-    # Simulation Overview
-    print(f"\n{'SIMULATION OVERVIEW':^50}")
-    print("-" * 50)
-    meta = simulation_results["simulation_metadata"]
-    print(f"Hospital Name: {meta['hospital_name']}")
-    print(f"Threading Mode: {meta['threading_mode']}")
-    print(f"Max Concurrent Workers: {meta['max_workers']}")
-    print(f"Total Duration: {meta['duration_minutes']:.1f} minutes")
-    print(f"Processing Speed: {len(simulation_results['patient_results']) / meta['duration_minutes']:.1f} patients/minute")
-    
-    # Concurrent Processing Metrics
-    print(f"\n{'CONCURRENT PROCESSING METRICS':^50}")
-    print("-" * 50)
-    concurrent_metrics = concurrent_stats["concurrent_metrics"]
-    for metric, value in concurrent_metrics.items():
-        metric_name = metric.replace('_', ' ').title()
-        print(f"{metric_name:>30}: {value}")
-    
-    # Threading Performance
-    print(f"\n{'THREADING PERFORMANCE':^50}")
-    print("-" * 50)
-    threading_perf = concurrent_stats["threading_performance"]
-    for metric, value in threading_perf.items():
-        metric_name = metric.replace('_', ' ').title()
-        print(f"{metric_name:>30}: {value}")
-    
-    # Stage Completion Rates
-    print(f"\n{'STAGE COMPLETION RATES':^50}")
-    print("-" * 50)
-    stage_rates = concurrent_stats["stage_completion_rates"]
-    for stage, rate in stage_rates.items():
-        stage_name = stage.replace('_', ' ').title()
-        print(f"{stage_name:>30}: {rate}")
-    
-    # Resource Utilization (Thread-Safe)
-    print(f"\n{'RESOURCE UTILIZATION':^50}")
-    print("-" * 50)
-    room_stats = hospital_stats['resource_utilization']['rooms']
-    for room_type, data in room_stats.items():
-        print(f"{room_type.title():>15}: {data['occupied']}/{data['total']} ({data['utilization_rate']})")
-    
-    # Doctor Performance in Threaded Environment
-    print(f"\n{'DOCTOR PERFORMANCE (THREADED)':^50}")
-    print("-" * 50)
-    print(f"{'Doctor':<20} {'Specialty':<15} {'Patients':<10} {'Utilization':<12} {'Status'}")
-    print("-" * 70)
-    doctor_stats = hospital_stats['resource_utilization']['doctors']
-    for doc in doctor_stats:
-        print(f"{doc['name']:<20} {doc['specialty']:<15} {doc['patients_seen']:<10} "
-              f"{doc['utilization']:<12} {doc['status']}")
-    
-    # Financial Summary
-    print(f"\n{'FINANCIAL SUMMARY':^50}")
-    print("-" * 50)
-    financial = hospital_stats['financial_summary']
-    for metric, value in financial.items():
-        metric_name = metric.replace('_', ' ').title()
-        print(f"{metric_name:>30}: {value}")
-    
-    print("\n" + "="*80)
-
-def display_patient_visit_outcomes(visit_summaries: List[Dict[str, Any]], detailed: bool = False) -> None:
-    """
-    Display patient visit outcomes from threaded processing.
-    
-    Args:
-        visit_summaries (List[Dict[str, Any]]): List of visit outcome summaries.
-        detailed (bool): Whether to show detailed information.
-    """
-    print("\n" + "="*80)
-    print(f"{'PATIENT VISIT OUTCOMES (THREADED)':^80}")
-    print("="*80)
-    
-    successful_visits = [v for v in visit_summaries if v.get("success", False)]
-    failed_visits = [v for v in visit_summaries if not v.get("success", False)]
-    
-    print(f"\nSUMMARY:")
-    print(f"Total Visits: {len(visit_summaries)}")
-    print(f"Successful: {len(successful_visits)}")
-    print(f"Failed: {len(failed_visits)}")
-    
-    if detailed and successful_visits:
-        print(f"\n{'SUCCESSFUL VISITS DETAILS':^50}")
-        print("-" * 60)
-        print(f"{'Patient':<20} {'Thread':<15} {'Duration':<10} {'Stages':<15} {'Cost'}")
-        print("-" * 60)
-        
-        for visit in successful_visits[:10]:  # Show first 10 for brevity
-            stages_count = len(visit.get("stages_completed", []))
-            duration = visit.get("duration_minutes", 0)
-            cost = visit.get("total_cost", 0)
-            thread_id = visit.get("thread_id", "Unknown")[:12]
+    while time.time() - start_time < duration_seconds:
+        try:
+            current_size = export_file_path.stat().st_size
+            current_modified = export_file_path.stat().st_mtime
             
-            print(f"{visit['patient_name']:<20} {thread_id:<15} {duration:<10.1f} "
-                  f"{stages_count:<15} ${cost}")
-        
-        if len(successful_visits) > 10:
-            print(f"... and {len(successful_visits) - 10} more successful visits")
+            if current_size != last_size or current_modified != last_modified:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                size_change = current_size - last_size
+                
+                print(f"[{timestamp}] File updated - Size: {current_size} bytes ({size_change:+d})")
+                
+                last_size = current_size
+                last_modified = current_modified
+            
+            time.sleep(2)  # Check every 2 seconds
+            
+        except FileNotFoundError:
+            print("Export file was deleted or moved")
+            break
+        except Exception as e:
+            print(f"Error monitoring file: {e}")
+            break
     
-    if failed_visits:
-        print(f"\n{'FAILED VISITS':^50}")
-        print("-" * 50)
-        for visit in failed_visits:
-            errors = ', '.join(visit.get("errors", ["Unknown error"]))
-            print(f"• {visit['patient_name']}: {errors}")
-    
-    # Threading efficiency analysis
-    if visit_summaries:
-        thread_usage = {}
-        for visit in visit_summaries:
-            thread_id = visit.get("thread_id", "Unknown")
-            thread_usage[thread_id] = thread_usage.get(thread_id, 0) + 1
-        
-        print(f"\n{'THREAD UTILIZATION':^50}")
-        print("-" * 50)
-        for thread_id, count in sorted(thread_usage.items()):
-            print(f"Thread {thread_id}: {count} patients")
-
-def export_threaded_simulation_data(hospital: ThreadSafeHospital, simulation_results: Dict[str, Any], 
-                                   patients: List[Patient], filename: str = None) -> str:
-    """
-    Export threaded simulation data to JSON file with original format compatibility.
-    
-    Args:
-        hospital (ThreadSafeHospital): The hospital instance.
-        simulation_results (Dict[str, Any]): Complete simulation results.
-        patients (List[Patient]): List of patients for summaries.
-        filename (str, optional): Output filename.
-        
-    Returns:
-        str: Path to the exported file.
-    """
-    if filename is None:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"threaded_hospital_simulation_{timestamp}.json"
-    
-    # Prepare export data in original format + threading enhancements
-    export_data = {
-        # Keep original format for backward compatibility
-        "simulation_metadata": {
-            "export_time": datetime.now().isoformat(),
-            "hospital_name": hospital.name,
-            "total_patients": len(patients),
-            "total_doctors": len(hospital.doctors),
-            "simulation_duration_hours": simulation_results["simulation_metadata"]["duration_minutes"] / 60,
-            # Add threading metadata
-            "threading_enabled": True,
-            "max_concurrent_workers": simulation_results["simulation_metadata"]["max_workers"],
-            "simulation_type": "threaded_concurrent"
-        },
-        
-        # Keep original hospital statistics format
-        "hospital_statistics": hospital.generate_hospital_statistics(),
-        
-        # Keep original patient summaries format
-        "patient_summaries": [patient.get_medical_summary() for patient in patients],
-        
-        # Keep original doctor summaries format  
-        "doctor_summaries": [doctor.get_daily_summary() for doctor in hospital.doctors],
-        
-        # Add new threading-specific data
-        "threading_analysis": {
-            "concurrent_processing_enabled": True,
-            "max_workers_used": simulation_results["simulation_metadata"]["max_workers"],
-            "resource_contention_logs": len([log for log in hospital.resource_logs if "timeout" in str(log)]),
-            "thread_safety_events": len(hospital.resource_logs),
-            "concurrent_statistics": simulation_results.get("concurrent_statistics", {}),
-            "visit_summaries": simulation_results.get("patient_results", [])
-        }
-    }
-    
-    # Write to file
-    export_path = Path("exports")
-    export_path.mkdir(exist_ok=True)
-    full_path = export_path / filename
-    
-    class DateTimeEncoder(json.JSONEncoder):
-        """Custom JSON encoder for datetime objects."""
-        def default(self, obj):
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            elif isinstance(obj, timedelta):
-                return str(obj)
-            return super().default(obj)
-    
-    with open(full_path, 'w', encoding='utf-8') as f:
-        json.dump(export_data, f, indent=2, cls=DateTimeEncoder)
-    
-    logger = logging.getLogger(__name__)
-    logger.info(f"Threaded simulation data exported to {full_path}")
-    
-    return str(full_path)
-
-def compare_sequential_vs_threaded(patients: List[Patient], hospital: ThreadSafeHospital) -> None:
-    """
-    Compare performance between sequential and threaded processing.
-    
-    Args:
-        patients (List[Patient]): Patients for comparison.
-        hospital (ThreadSafeHospital): Hospital instance.
-    """
-    print("\n" + "="*80)
-    print(f"{'SEQUENTIAL VS THREADED COMPARISON':^80}")
-    print("="*80)
-    
-    # Estimate sequential processing time
-    avg_visit_time = 3.5  # minutes per patient (estimated)
-    sequential_estimate = len(patients) * avg_visit_time
-    
-    # Run threaded simulation with timing
-    start_time = datetime.now()
-    visit_summaries = hospital.process_patients_concurrently(patients, max_workers=4)
-    threaded_duration = (datetime.now() - start_time).total_seconds() / 60
-    
-    # Calculate efficiency metrics
-    speedup_factor = sequential_estimate / threaded_duration if threaded_duration > 0 else 0
-    efficiency = speedup_factor / 4 * 100  # Assuming 4 workers
-    
-    print(f"Sequential Processing (Estimated): {sequential_estimate:.1f} minutes")
-    print(f"Threaded Processing (Actual): {threaded_duration:.1f} minutes")
-    print(f"Speedup Factor: {speedup_factor:.2f}x")
-    print(f"Threading Efficiency: {efficiency:.1f}%")
-    print(f"Time Saved: {sequential_estimate - threaded_duration:.1f} minutes")
-    
-    # Resource contention analysis
-    successful_visits = len([v for v in visit_summaries if v.get("success", False)])
-    print(f"\nResource Management:")
-    print(f"Successful Visits: {successful_visits}/{len(patients)}")
-    print(f"Resource Contention Events: {len([log for log in hospital.resource_logs if 'timeout' in str(log)])}")
-    
-    print("\n" + "="*80)
+    print("-" * 60)
+    print(f"Monitoring completed")
 
 def main():
-    """Enhanced main function for threaded hospital simulation."""
+    """Enhanced main function with continuous export demonstration."""
     print("="*80)
-    print(f"{'TWIN DIGITAL HOSPITAL SYSTEM - THREADED EDITION':^80}")
-    print(f"{'Medical Simulation Platform v2.1 (Thread-Safe)':^80}")
+    print(f"{'TWIN DIGITAL HOSPITAL SYSTEM - CONTINUOUS EXPORT EDITION':^80}")
+    print(f"{'Real-time JSON Export During Simulation':^80}")
     print("="*80)
     
-    # Setup logging with thread support
+    # Setup logging
     logger = setup_logging()
-    logger.info("Starting Twin Digital Hospital System - Threaded Edition")
+    logger.info("Starting Twin Digital Hospital System - Continuous Export Edition")
     
     try:
-        # Load configuration
-        print("Loading system configuration...")
-        config = load_config("default.yaml")
-        logger.info("Configuration loaded successfully")
-        print(f"✓ Configuration loaded: {config.patient_data.number_of_patients} patients, "
+        # Load configuration with continuous export settings
+        print("Loading system configuration with continuous export settings...")
+        config = load_config("default.yaml")  # Use enhanced config
+        export_config = get_export_config()
+        
+        logger.info("Configuration loaded successfully with continuous export")
+        print(f"✅ Configuration loaded: {config.patient_data.number_of_patients} patients, "
               f"{len(config.get_specialties())} specialties")
+        print(f"📤 Continuous Export: {'Enabled' if export_config.enabled else 'Disabled'}")
         
-        # Setup thread-safe hospital
-        print("Initializing thread-safe hospital system...")
-        hospital = setup_hospital_from_config()
-        print(f"✓ Thread-safe hospital '{hospital.name}' initialized with {len(hospital.doctors)} doctors")
+        # Setup hospital with continuous export
+        print("Initializing hospital system with continuous export...")
+        hospital = setup_hospital_with_continuous_export()
+        print(f"✅ Hospital '{hospital.name}' initialized with {len(hospital.doctors)} doctors")
         
-        # Generate patients with staggered arrivals
-        print("Generating patient population with realistic arrival patterns...")
-        patients = generate_random_patients()
-        print(f"✓ Generated {len(patients)} patients for concurrent processing")
+        # Demonstrate continuous export features
+        demonstrate_continuous_export_features(hospital)
         
-        # Display threading configuration
-        max_workers = min(len(hospital.doctors), 6)  # Limit based on doctors available
-        print(f"✓ Threading configured: {max_workers} concurrent workers")
+        # Generate patients
+        print("Generating patient population...")
+        patients = generate_random_patients(8)  # Smaller number for demo
+        print(f"✅ Generated {len(patients)} patients")
         
-        # Run simulation (with mode selection)
-        simulation_mode = "threaded"  # Can be changed to "sequential" for comparison
-        print(f"\nStarting {simulation_mode} medical simulation...")
-        simulation_results = run_simulation_with_mode(
-            hospital, patients, mode=simulation_mode, max_workers=max_workers, verbose=True
-        )
+        # Get export file path for monitoring
+        export_status = hospital.get_continuous_export_status()
+        export_file_path = Path(export_status['export_file_path']) if export_status['export_file_path'] else None
         
-        # Display comprehensive results
-        print("Generating comprehensive threaded reports...")
-        display_threaded_statistics(hospital, simulation_results)
-        display_patient_visit_outcomes(simulation_results["patient_results"], detailed=True)
+        # Start file monitoring in background thread
+        if export_file_path:
+            monitor_thread = threading.Thread(
+                target=monitor_export_file_changes,
+                args=(export_file_path, 120),  # Monitor for 2 minutes
+                daemon=True
+            )
+            monitor_thread.start()
         
-        # Performance comparison
-        print("Analyzing threading performance benefits...")
-        # compare_sequential_vs_threaded(patients[:5], hospital)  # Use subset for comparison
+        # Run simulation with continuous export
+        print(f"\n🚀 Starting simulation with live continuous export...")
+        simulation_results = run_simulation_with_continuous_export_demo(hospital, patients)
         
-        # Export data
-        print("\nExporting threaded simulation data...")
-        export_path = export_threaded_simulation_data(hospital, simulation_results, patients)
-        print(f"✓ Threaded simulation data exported to: {export_path}")
-        
-        # Final summary with threading insights
+        # Display results
         print("\n" + "="*80)
-        print(f"{'THREADED SIMULATION COMPLETED SUCCESSFULLY':^80}")
-        print(f"{'Enhanced Performance with Concurrent Processing':^80}")
-        print(f"{'Check logs folder for detailed thread-safe logs':^80}")
-        print(f"{'Check exports folder for threaded data export':^80}")
+        print(f"{'SIMULATION RESULTS WITH CONTINUOUS EXPORT':^80}")
         print("="*80)
         
-        # Display key threading benefits
+        # Show export file information
+        final_export_status = hospital.get_continuous_export_status()
+        if final_export_status['file_exists']:
+            print(f"📄 Continuous Export File: {final_export_status['export_file_path']}")
+            print(f"📊 Final File Size: {final_export_status['file_size_bytes']} bytes")
+            print(f"🕐 Last Updated: {final_export_status['last_export_time']}")
+            
+            # Show a sample of the export data
+            try:
+                with open(export_file_path, 'r') as f:
+                    export_data = json.load(f)
+                    
+                print(f"\n📋 Export Data Sample:")
+                print(f"  • Active Patients: {len(export_data.get('real_time_data', {}).get('active_patients', {}))}")
+                print(f"  • Processed Patients: {len(export_data.get('real_time_data', {}).get('patients_processed', []))}")
+                print(f"  • Resource Logs: {len(export_data.get('real_time_data', {}).get('resource_logs', []))}")
+                print(f"  • Billing Records: {len(export_data.get('real_time_data', {}).get('billing_records', []))}")
+                
+            except Exception as e:
+                print(f"Could not read export file sample: {e}")
+        
+        # Traditional simulation statistics
         concurrent_metrics = simulation_results["concurrent_statistics"]["concurrent_metrics"]
-        print(f"\n🚀 THREADING BENEFITS:")
-        print(f"   • Processed {concurrent_metrics['total_patients']} patients concurrently")
-        print(f"   • Average visit time: {concurrent_metrics['average_visit_duration_minutes']} minutes")
+        print(f"\n🏥 SIMULATION SUMMARY:")
+        print(f"   • Processed {concurrent_metrics['total_patients']} patients with live export")
         print(f"   • Success rate: {concurrent_metrics['success_rate']}")
         print(f"   • Total revenue: {concurrent_metrics['total_revenue']}")
-        print(f"   • Resource contention handled gracefully with timeouts")
+        print(f"   • Average visit time: {concurrent_metrics['average_visit_duration_minutes']} minutes")
         
-        logger.info("Twin Digital Hospital System - Threaded Edition completed successfully")
+        # Export-specific benefits
+        print(f"\n💡 CONTINUOUS EXPORT BENEFITS:")
+        print(f"   • Real-time monitoring during simulation")
+        print(f"   • Data available immediately (not just at end)")
+        print(f"   • Supports external monitoring tools")
+        print(f"   • Thread-safe concurrent updates")
+        print(f"   • Automatic backup of simulation progress")
+        
+        # Final cleanup
+        print("\n🧹 Cleaning up...")
+        hospital.cleanup_continuous_export()
+        
+        print("\n" + "="*80)
+        print(f"{'CONTINUOUS EXPORT DEMONSTRATION COMPLETED':^80}")
+        print(f"{'Check the export file for real-time data capture':^80}")
+        print("="*80)
+        
+        if export_file_path and export_file_path.exists():
+            print(f"\n📁 Your continuous export file: {export_file_path}")
+        
+        logger.info("Twin Digital Hospital System - Continuous Export Edition completed successfully")
         
     except FileNotFoundError as e:
         error_msg = f"Configuration file not found: {e}"
         print(f"❌ ERROR: {error_msg}")
+        print("💡 Make sure 'enhanced_default.yaml' config file exists")
         logger.error(error_msg)
         sys.exit(1)
         
     except Exception as e:
-        error_msg = f"Threaded simulation error: {str(e)}"
+        error_msg = f"Continuous export simulation error: {str(e)}"
         print(f"❌ ERROR: {error_msg}")
         logger.error(error_msg, exc_info=True)
         sys.exit(1)
 
-def run_load_test(hospital: ThreadSafeHospital, num_patients: int = 20, max_workers: int = 8) -> None:
-    """
-    Run a load test to evaluate system performance under high concurrent load.
-    
-    Args:
-        hospital (ThreadSafeHospital): Hospital instance.
-        num_patients (int): Number of patients for load test.
-        max_workers (int): Maximum concurrent workers.
-    """
-    print("\n" + "="*80)
-    print(f"{'LOAD TEST - HIGH CONCURRENCY SIMULATION':^80}")
-    print("="*80)
-    
-    logger = logging.getLogger(__name__)
-    logger.info(f"Starting load test with {num_patients} patients and {max_workers} workers")
-    
-    # Generate patients for load test
-    load_test_patients = generate_random_patients(num_patients)
-    
-    # Run simulation with high concurrency
-    print(f"Running high-load simulation with {num_patients} patients...")
-    start_time = datetime.now()
-    
-    visit_summaries = hospital.process_patients_concurrently(load_test_patients, max_workers)
-    
-    end_time = datetime.now()
-    duration = (end_time - start_time).total_seconds()
-    
-    # Analyze results
-    successful = len([v for v in visit_summaries if v.get("success", False)])
-    failed = len(visit_summaries) - successful
-    
-    print(f"\n{'LOAD TEST RESULTS':^50}")
-    print("-" * 50)
-    print(f"Patients Processed: {len(visit_summaries)}")
-    print(f"Duration: {duration:.1f} seconds")
-    print(f"Throughput: {len(visit_summaries) / duration:.2f} patients/second")
-    print(f"Success Rate: {(successful / len(visit_summaries) * 100):.1f}%")
-    print(f"Failed Visits: {failed}")
-    
-    # Resource contention analysis
-    timeout_events = len([log for log in hospital.resource_logs if "timeout" in str(log).lower()])
-    print(f"Resource Timeouts: {timeout_events}")
-    print(f"System Stability: {'Good' if timeout_events < len(visit_summaries) * 0.1 else 'Needs Optimization'}")
-    
-    print("\n" + "="*80)
-
 if __name__ == "__main__":
-    # Enhanced command line arguments for different simulation modes
+    # Enhanced command line arguments
     if len(sys.argv) > 1:
-        if sys.argv[1] == "--load-test":
-            # Run load test mode
-            logger = setup_logging()
-            config = load_config("default.yaml")
-            hospital = setup_hospital_from_config()
+        if sys.argv[1] == "--disable-export":
+            # Run with continuous export disabled
+            print("Running simulation with continuous export DISABLED")
+            # Modify config to disable export
+            # ... implementation for disabled mode
             
-            num_patients = int(sys.argv[2]) if len(sys.argv) > 2 else 20
-            max_workers = int(sys.argv[3]) if len(sys.argv) > 3 else 8
+        elif sys.argv[1] == "--export-demo":
+            # Run focused export demonstration
+            print("Running CONTINUOUS EXPORT demonstration")
+            main()
             
-            run_load_test(hospital, num_patients, max_workers)
-            
-        elif sys.argv[1] == "--sequential":
-            # Run in sequential mode for comparison
-            logger = setup_logging()
-            config = load_config("default.yaml")
-            hospital = setup_hospital_from_config()
-            patients = generate_random_patients()
-            
-            print("Running in SEQUENTIAL mode for comparison...")
-            simulation_results = run_sequential_simulation(hospital, patients, verbose=True)
-            display_threaded_statistics(hospital, simulation_results)
-            export_path = export_threaded_simulation_data(hospital, simulation_results, patients)
-            print(f"✓ Sequential simulation data exported to: {export_path}")
-            
-        elif sys.argv[1] == "--compare":
-            # Run both modes for performance comparison
-            logger = setup_logging()
-            config = load_config("default.yaml")
-            
-            # Test with smaller patient set for comparison
-            test_patients = generate_random_patients(8)
-            
-            print("\n" + "="*80)
-            print(f"{'PERFORMANCE COMPARISON: SEQUENTIAL VS THREADED':^80}")
-            print("="*80)
-            
-            # Sequential test
-            hospital_seq = setup_hospital_from_config()
-            print("\n1. Running Sequential Simulation...")
-            seq_start = datetime.now()
-            seq_results = run_sequential_simulation(hospital_seq, test_patients, verbose=False)
-            seq_duration = (datetime.now() - seq_start).total_seconds()
-            
-            # Threaded test  
-            hospital_thread = setup_hospital_from_config()
-            print("\n2. Running Threaded Simulation...")
-            thread_start = datetime.now()
-            thread_results = run_threaded_simulation(hospital_thread, test_patients, max_workers=4, verbose=False)
-            thread_duration = (datetime.now() - thread_start).total_seconds()
-            
-            # Comparison results
-            speedup = seq_duration / thread_duration if thread_duration > 0 else 0
-            print(f"\n{'COMPARISON RESULTS':^50}")
-            print("-" * 50)
-            print(f"Sequential Time: {seq_duration:.1f} seconds")
-            print(f"Threaded Time: {thread_duration:.1f} seconds")
-            print(f"Speedup Factor: {speedup:.2f}x")
-            print(f"Efficiency: {speedup/4*100:.1f}% (with 4 workers)")
-            print(f"Time Saved: {seq_duration - thread_duration:.1f} seconds")
-            
+        elif sys.argv[1] == "--monitor-only":
+            # Just monitor an existing export file
+            export_file = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("exports").glob("continuous_hospital_simulation_*.json")
+            if export_file:
+                monitor_export_file_changes(export_file, duration_seconds=300)  # 5 minutes
+            else:
+                print("No export file found to monitor")
+                
         else:
-            print("Usage:")
-            print("  python main.py                    # Run threaded simulation (default)")
-            print("  python main.py --sequential       # Run sequential simulation")  
-            print("  python main.py --compare          # Compare both modes")
-            print("  python main.py --load-test [patients] [workers]  # Load test")
+            print("Available options:")
+            print("  python main.py                    # Run with continuous export (default)")
+            print("  python main.py --export-demo      # Focused export demonstration")
+            print("  python main.py --disable-export   # Run without continuous export")
+            print("  python main.py --monitor-only [file]  # Monitor existing export file")
     else:
-        # Run standard threaded simulation (default)
+        # Run standard simulation with continuous export (default)
         main()

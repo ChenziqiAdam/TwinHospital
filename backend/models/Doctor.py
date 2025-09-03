@@ -327,7 +327,8 @@ class ThreadSafeDoctor:
             ]
             
             total_consultation_time = sum(
-                c.get("duration_minutes", 0) for c in today_consultations
+                (val if val is not None else 0) 
+                for val in (c.get("duration_minutes") for c in today_consultations)
             )
             
             avg_consultation_time = (
