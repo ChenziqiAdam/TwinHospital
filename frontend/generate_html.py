@@ -5,6 +5,7 @@ from pathlib import Path
 def generate_hospital_report(json_file_path, output_file_path="hospital_report.html"):
     """
     Generate a comprehensive professional HTML report from hospital simulation JSON data.
+    Supports both legacy and new real-time data formats.
     
     Args:
         json_file_path (str): Path to the JSON file
@@ -15,11 +16,37 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
     with open(json_file_path, 'r', encoding='utf-8') as file:
         data = json.load(file)
     
-    # Extract data sections
-    metadata = data.get('simulation_metadata', {})
-    stats = data.get('hospital_statistics', {})
-    patients = data.get('patient_summaries', [])
-    doctors = data.get('doctor_summaries', [])
+    # Detect data format and extract sections
+    if 'real_time_data' in data:
+        # New real-time format
+        metadata = data.get('simulation_metadata', {})
+        real_time = data.get('real_time_data', {})
+        stats = real_time.get('hospital_statistics', {})
+        patients = real_time.get('patients_processed', [])
+        active_patients = real_time.get('active_patients', {})
+        resource_logs = real_time.get('resource_logs', [])
+        patient_logs = real_time.get('patient_logs', [])
+        billing_records = real_time.get('billing_records', [])
+        financial_summary = real_time.get('financial_summary', {})
+        doctor_statuses = real_time.get('doctor_statuses', [])
+        room_utilization = real_time.get('room_utilization', {})
+        daily_stats = real_time.get('daily_statistics', {})
+        is_realtime = True
+    else:
+        # Legacy format
+        metadata = data.get('simulation_metadata', {})
+        stats = data.get('hospital_statistics', {})
+        patients = data.get('patient_summaries', [])
+        doctors = data.get('doctor_summaries', [])
+        active_patients = {}
+        resource_logs = []
+        patient_logs = []
+        billing_records = []
+        financial_summary = stats.get('financial_summary', {})
+        doctor_statuses = []
+        room_utilization = {}
+        daily_stats = {}
+        is_realtime = False
     
     # Generate HTML content
     html_content = f"""
@@ -164,6 +191,10 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
             background-color: #d1ecf1;
         }}
         
+        .patient-header.active {{
+            background-color: #fff3cd;
+        }}
+        
         .patient-header h3 {{
             font-size: 1.1em;
             margin: 0;
@@ -266,12 +297,22 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
             color: #155724;
         }}
         
+        .status-busy {{
+            background-color: #f8d7da;
+            color: #721c24;
+        }}
+        
         .status-discharged {{
             background-color: #cce5ff;
             color: #004085;
         }}
         
-        .priority-high {{ color: #dc3545; font-weight: bold; }}
+        .status-active {{
+            background-color: #fff3cd;
+            color: #856404;
+        }}
+        
+        .priority-emergency {{ color: #dc3545; font-weight: bold; }}
         .priority-standard {{ color: #28a745; }}
         .priority-low {{ color: #6c757d; }}
         
@@ -296,6 +337,47 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
             border-top: 1px solid #dee2e6;
         }}
         
+        .log-entry {{
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 8px 10px;
+            margin: 5px 0;
+            font-size: 0.85em;
+            display: grid;
+            grid-template-columns: auto 1fr auto auto;
+            gap: 10px;
+            align-items: center;
+        }}
+        
+        .log-timestamp {{
+            font-family: monospace;
+            color: #6c757d;
+            font-size: 0.8em;
+        }}
+        
+        .bill-record {{
+            background: #e8f5e8;
+            border: 1px solid #c3e6c3;
+            border-radius: 4px;
+            padding: 8px 10px;
+            margin: 5px 0;
+            font-size: 0.85em;
+            display: grid;
+            grid-template-columns: auto 1fr auto auto auto;
+            gap: 10px;
+            align-items: center;
+        }}
+        
+        .threading-info {{
+            background-color: #f0f8ff;
+            border: 1px solid #b8daff;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 8px 0;
+            font-size: 0.8em;
+        }}
+        
         @media (max-width: 768px) {{
             .detail-grid {{
                 grid-template-columns: 1fr;
@@ -308,6 +390,12 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
             .container {{
                 padding: 10px;
             }}
+            
+            .log-entry,
+            .bill-record {{
+                grid-template-columns: 1fr;
+                gap: 5px;
+            }}
         }}
     </style>
 </head>
@@ -317,9 +405,20 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
         <div class="header">
             <h1>{metadata.get('hospital_name', 'Hospital Simulation Report')}</h1>
             <div class="subtitle">
+"""
+    
+    if is_realtime:
+        html_content += f"""
+                Real-Time Simulation Report | Last Update: {metadata.get('last_update', 'Unknown')} | 
+                Update #{metadata.get('updates_count', 0)} | Started: {metadata.get('simulation_start', 'Unknown')}
+"""
+    else:
+        html_content += f"""
                 Simulation Report | Generated: {metadata.get('export_time', 'Unknown')} | 
-                Duration: {metadata.get('simulation_duration_hours', 0):.2f} hours | 
-                Patients: {metadata.get('total_patients', 0)} | Doctors: {metadata.get('total_doctors', 0)}
+                Duration: {metadata.get('simulation_duration_hours', 0):.2f} hours
+"""
+    
+    html_content += """
             </div>
         </div>
 
@@ -330,6 +429,12 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content" id="summary">
+"""
+
+    # Handle both data formats for summary
+    if is_realtime:
+        patient_stats = stats.get('patient_statistics', {})
+        html_content += f"""
                 <table class="summary-table">
                     <tr>
                         <th>Metric</th>
@@ -339,78 +444,125 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                     </tr>
                     <tr>
                         <td><strong>Patients Processed</strong></td>
-                        <td>{stats.get('patient_statistics', {}).get('total_processed', 0)}</td>
-                        <td><strong>Revenue</strong></td>
-                        <td>{stats.get('financial_summary', {}).get('total_revenue', '$0')}</td>
+                        <td>{patient_stats.get('total_processed', 0)}</td>
+                        <td><strong>Currently Active</strong></td>
+                        <td>{patient_stats.get('currently_active', 0)}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Total Revenue</strong></td>
+                        <td>${financial_summary.get('total_revenue', 0)}</td>
+                        <td><strong>Net Profit</strong></td>
+                        <td>${financial_summary.get('profit', 0)}</td>
                     </tr>
                     <tr>
                         <td><strong>Tests Performed</strong></td>
-                        <td>{stats.get('patient_statistics', {}).get('tests_performed', 0)}</td>
-                        <td><strong>Net Profit</strong></td>
-                        <td>{stats.get('financial_summary', {}).get('profit', '$0')}</td>
+                        <td>{patient_stats.get('tests_performed', 0)}</td>
+                        <td><strong>Bills Issued</strong></td>
+                        <td>{financial_summary.get('bills_count', 0)}</td>
                     </tr>
                     <tr>
                         <td><strong>Consultations</strong></td>
-                        <td>{stats.get('patient_statistics', {}).get('consultations_completed', 0)}</td>
+                        <td>{patient_stats.get('consultations_completed', 0)}</td>
+                        <td><strong>Prescriptions</strong></td>
+                        <td>{patient_stats.get('prescriptions_dispensed', 0)}</td>
+                    </tr>
+                </table>
+"""
+    else:
+        # Legacy format summary (keep existing logic)
+        patient_stats = stats.get('patient_statistics', {})
+        fin_stats = stats.get('financial_summary', {})
+        op_stats = stats.get('operational_metrics', {})
+        html_content += f"""
+                <table class="summary-table">
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                    <tr>
+                        <td><strong>Patients Processed</strong></td>
+                        <td>{patient_stats.get('total_processed', 0)}</td>
+                        <td><strong>Revenue</strong></td>
+                        <td>{fin_stats.get('total_revenue', '$0')}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Tests Performed</strong></td>
+                        <td>{patient_stats.get('tests_performed', 0)}</td>
+                        <td><strong>Net Profit</strong></td>
+                        <td>{fin_stats.get('profit', '$0')}</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Consultations</strong></td>
+                        <td>{patient_stats.get('consultations_completed', 0)}</td>
                         <td><strong>Payment Rate</strong></td>
-                        <td>{stats.get('financial_summary', {}).get('payment_rate', '0%')}</td>
+                        <td>{fin_stats.get('payment_rate', '0%')}</td>
                     </tr>
                     <tr>
                         <td><strong>Patient Satisfaction</strong></td>
-                        <td>{stats.get('operational_metrics', {}).get('patient_satisfaction_score', 'N/A')}</td>
+                        <td>{op_stats.get('patient_satisfaction_score', 'N/A')}</td>
                         <td><strong>Avg. Processing Time</strong></td>
-                        <td>{stats.get('operational_metrics', {}).get('avg_patient_processing_time', 'N/A')}</td>
+                        <td>{op_stats.get('avg_patient_processing_time', 'N/A')}</td>
                     </tr>
                 </table>
+"""
+    
+    html_content += """
             </div>
         </div>
+"""
 
-        <!-- Financial Details -->
+    # Active Patients Section (only for real-time data)
+    if is_realtime and active_patients:
+        html_content += f"""
+        <!-- Active Patients -->
         <div class="section">
-            <div class="section-header" onclick="toggleSection('financial')">
-                <h2>Financial Performance</h2>
+            <div class="section-header" onclick="toggleSection('active')">
+                <h2>Currently Active Patients ({len(active_patients)})</h2>
                 <span class="toggle-icon">▼</span>
             </div>
-            <div class="section-content collapsed" id="financial">
+            <div class="section-content" id="active">
                 <table class="summary-table">
-                    <tr>
-                        <th>Financial Metric</th>
-                        <th>Value</th>
-                        <th>Details</th>
-                    </tr>
-                    <tr>
-                        <td>Total Revenue</td>
-                        <td>{stats.get('financial_summary', {}).get('total_revenue', '$0')}</td>
-                        <td>Revenue from all patient services</td>
-                    </tr>
-                    <tr>
-                        <td>Total Expenses</td>
-                        <td>{stats.get('financial_summary', {}).get('total_expenses', '$0')}</td>
-                        <td>Operational costs and overhead</td>
-                    </tr>
-                    <tr>
-                        <td>Net Profit</td>
-                        <td>{stats.get('financial_summary', {}).get('profit', '$0')}</td>
-                        <td>Revenue minus expenses</td>
-                    </tr>
-                    <tr>
-                        <td>Bills Issued</td>
-                        <td>{stats.get('financial_summary', {}).get('bills_issued', 0)}</td>
-                        <td>Total number of bills generated</td>
-                    </tr>
-                    <tr>
-                        <td>Payment Rate</td>
-                        <td>{stats.get('financial_summary', {}).get('payment_rate', '0%')}</td>
-                        <td>Percentage of bills paid</td>
-                    </tr>
+                    <thead>
+                        <tr>
+                            <th>Patient ID</th>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Priority</th>
+                            <th>Department</th>
+                            <th>Arrival Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+"""
+        
+        for patient_id, patient_data in active_patients.items():
+            priority_class = "priority-emergency" if patient_data.get('priority', 3) == 1 else "priority-standard"
+            html_content += f"""
+                        <tr>
+                            <td>{patient_id}</td>
+                            <td>{patient_data.get('name', 'Unknown')}</td>
+                            <td><span class="status-badge status-active">{patient_data.get('status', 'Unknown')}</span></td>
+                            <td class="{priority_class}">{patient_data.get('priority', 'Unknown')}</td>
+                            <td>{patient_data.get('assigned_department', 'Unknown')}</td>
+                            <td>{patient_data.get('arrival_time', 'Unknown')}</td>
+                        </tr>
+"""
+        
+        html_content += """
+                    </tbody>
                 </table>
             </div>
         </div>
+"""
 
-        <!-- Doctor Performance -->
+    # Doctor Status Section
+    html_content += """
+        <!-- Medical Staff Status -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('doctors')">
-                <h2>Medical Staff Performance</h2>
+                <h2>Medical Staff Status</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="doctors">
@@ -419,35 +571,52 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                         <tr>
                             <th>Doctor</th>
                             <th>Specialty</th>
-                            <th>Experience</th>
-                            <th>Patients Seen</th>
-                            <th>Utilization</th>
-                            <th>Avg. Consultation</th>
                             <th>Status</th>
-                            <th>Shift</th>
+                            <th>Patients Today</th>
+"""
+    
+    if is_realtime:
+        html_content += """
+                            <th>Availability</th>
                         </tr>
                     </thead>
                     <tbody>
 """
-
-    # Add doctor rows
-    for doctor in doctors:
-        doctor_info = doctor.get('doctor_info', {})
-        daily_metrics = doctor.get('daily_metrics', {})
-        current_status = doctor.get('current_status', {})
         
-        status_class = "status-available" if current_status.get('is_available', True) else "status-busy"
-        
-        html_content += f"""
+        for doctor in doctor_statuses:
+            status_class = "status-available" if doctor.get('is_available', True) else "status-busy"
+            html_content += f"""
                         <tr>
-                            <td>{doctor_info.get('name', 'Unknown')}</td>
-                            <td>{doctor_info.get('specialty', 'Unknown')}</td>
-                            <td>{doctor_info.get('experience_years', 0)} years</td>
-                            <td>{daily_metrics.get('patients_seen', 0)}</td>
-                            <td>{daily_metrics.get('utilization_rate', 0):.1f}%</td>
-                            <td>{daily_metrics.get('average_consultation_time_minutes', 0):.1f} min</td>
-                            <td><span class="status-badge {status_class}">{current_status.get('status', 'Unknown')}</span></td>
-                            <td>{current_status.get('shift_start', 'N/A')} - {current_status.get('shift_end', 'N/A')}</td>
+                            <td>{doctor.get('name', 'Unknown')}</td>
+                            <td>{doctor.get('specialty', 'Unknown')}</td>
+                            <td><span class="status-badge {status_class}">{doctor.get('status', 'Unknown')}</span></td>
+                            <td>{doctor.get('patients_seen_today', 0)}</td>
+                            <td>{'Available' if doctor.get('is_available', False) else 'Busy'}</td>
+                        </tr>
+"""
+    else:
+        html_content += """
+                            <th>Utilization</th>
+                            <th>Avg. Consultation</th>
+                            <th>Max Capacity</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+"""
+        
+        # Handle legacy doctor data
+        doctor_data = stats.get('resource_utilization', {}).get('doctors', [])
+        for doctor in doctor_data:
+            status_class = "status-available" if doctor.get('status') == 'Available' else "status-busy"
+            html_content += f"""
+                        <tr>
+                            <td>{doctor.get('name', 'Unknown')}</td>
+                            <td>{doctor.get('specialty', 'Unknown')}</td>
+                            <td><span class="status-badge {status_class}">{doctor.get('status', 'Unknown')}</span></td>
+                            <td>{doctor.get('patients_seen', 0)}</td>
+                            <td>{doctor.get('utilization', '0%')}</td>
+                            <td>{doctor.get('avg_consultation_time', '0min')}</td>
+                            <td>{doctor.get('max_capacity', 0)}</td>
                         </tr>
 """
 
@@ -471,16 +640,40 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                             <th>Total</th>
                             <th>Available</th>
                             <th>Occupied</th>
+"""
+    
+    if is_realtime:
+        html_content += """
+                            <th>Maintenance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+"""
+        
+        for room_type, room_data in room_utilization.items():
+            occupied = room_data.get('occupied', 0)
+            total = room_data.get('total', 1)
+            utilization = (occupied / total * 100) if total > 0 else 0
+            html_content += f"""
+                        <tr>
+                            <td>{room_type.title()}</td>
+                            <td>{room_data.get('total', 0)}</td>
+                            <td>{room_data.get('available', 0)}</td>
+                            <td>{room_data.get('occupied', 0)}</td>
+                            <td>{room_data.get('maintenance', 0)}</td>
+                        </tr>
+"""
+    else:
+        html_content += """
                             <th>Utilization Rate</th>
                         </tr>
                     </thead>
                     <tbody>
 """
-
-    # Add room utilization data
-    rooms = stats.get('resource_utilization', {}).get('rooms', {})
-    for room_type, room_data in rooms.items():
-        html_content += f"""
+        
+        rooms = stats.get('resource_utilization', {}).get('rooms', {})
+        for room_type, room_data in rooms.items():
+            html_content += f"""
                         <tr>
                             <td>{room_type.title()}</td>
                             <td>{room_data.get('total', 0)}</td>
@@ -495,45 +688,180 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                 </table>
             </div>
         </div>
+"""
 
-        <!-- Patient Details -->
+    # Billing Records Section (only for real-time data)
+    if is_realtime and billing_records:
+        html_content += f"""
+        <!-- Billing Records -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('billing')">
+                <h2>Billing Records ({len(billing_records)} bills)</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="billing">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            <th>Bill ID</th>
+                            <th>Patient</th>
+                            <th>Service</th>
+                            <th>Amount</th>
+                            <th>Status</th>
+                            <th>Insurance</th>
+                            <th>Payment Time</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+"""
+        
+        for bill in billing_records:
+            html_content += f"""
+                        <tr>
+                            <td>{bill.get('bill_id', 'Unknown')}</td>
+                            <td>{bill.get('patient_name', 'Unknown')} ({bill.get('patient_id', 'N/A')})</td>
+                            <td>{bill.get('service', 'Unknown')}</td>
+                            <td>${bill.get('amount', 0)}</td>
+                            <td><span class="status-badge status-available">{bill.get('status', 'Unknown')}</span></td>
+                            <td>{'Yes' if bill.get('insurance', False) else 'No'}</td>
+                            <td>{bill.get('payment_time', 'N/A')}</td>
+                        </tr>
+"""
+        
+        html_content += """
+                    </tbody>
+                </table>
+            </div>
+        </div>
+"""
+
+    # Resource Logs Section (only for real-time data)
+    if is_realtime and resource_logs:
+        html_content += f"""
+        <!-- Resource Allocation Logs -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('resource-logs')">
+                <h2>Resource Allocation Logs ({len(resource_logs)} events)</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="resource-logs">
+                <button class="collapsible-btn" onclick="toggleDetails('resource-log-details')">Show/Hide Detailed Logs</button>
+                <div class="hidden-details" id="resource-log-details">
+"""
+        
+        for log in resource_logs:
+            action_color = "#28a745" if log.get('action') == 'release' else "#007bff"
+            html_content += f"""
+                    <div class="log-entry">
+                        <div class="log-timestamp">{log.get('timestamp', 'Unknown')}</div>
+                        <div><strong>{log.get('resource_name', 'Unknown').title()}</strong> - 
+                             <span style="color: {action_color};">{log.get('action', 'Unknown').title()}</span> 
+                             (Thread: {log.get('thread_id', 'Unknown')})</div>
+                        <div>Available: {log.get('available', 0)}/{log.get('total', 0)}</div>
+                        <div>Utilization: {log.get('utilization_rate', 0):.1f}%</div>
+                    </div>
+"""
+        
+        html_content += """
+                </div>
+            </div>
+        </div>
+"""
+
+    # Patient Logs Section (only for real-time data)
+    if is_realtime and patient_logs:
+        html_content += f"""
+        <!-- Patient Activity Logs -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('patient-logs')">
+                <h2>Patient Activity Logs ({len(patient_logs)} events)</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="patient-logs">
+                <table class="summary-table">
+                    <thead>
+                        <tr>
+                            <th>Event</th>
+                            <th>Patient</th>
+                            <th>Timestamp</th>
+                            <th>Priority</th>
+                            <th>Insurance</th>
+                            <th>Stay Duration</th>
+                            <th>Thread</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+"""
+        
+        for log in patient_logs:
+            event_color = "#28a745" if log.get('event') == 'discharge' else "#007bff"
+            stay_duration = f"{log.get('total_stay_hours', 0):.2f}h" if log.get('total_stay_hours') else 'N/A'
+            html_content += f"""
+                        <tr>
+                            <td><span style="color: {event_color}; font-weight: bold;">{log.get('event', 'Unknown').title()}</span></td>
+                            <td>{log.get('patient_name', 'Unknown')} ({log.get('patient_id', 'N/A')})</td>
+                            <td>{log.get('timestamp', 'Unknown')}</td>
+                            <td>{log.get('priority', 'N/A')}</td>
+                            <td>{'Yes' if log.get('insurance', False) else 'No'}</td>
+                            <td>{stay_duration}</td>
+                            <td>{log.get('thread_id', 'N/A')}</td>
+                        </tr>
+"""
+        
+        html_content += """
+                    </tbody>
+                </table>
+            </div>
+        </div>
+"""
+
+    # Patient Details Section
+    html_content += f"""
+        <!-- Patient Visit Details -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('patients')">
-                <h2>Patient Visit Details ({} patients)</h2>
+                <h2>Patient Visit Details ({len(patients)} patients)</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="patients">
-""".format(len(patients))
+"""
 
     # Add patient details
     for i, patient in enumerate(patients, 1):
         patient_info = patient.get('patient_info', {})
         visit_info = patient.get('visit_info', {})
         medical_record = patient.get('medical_record', {})
+        threading_info = patient.get('threading_info', {})
         
         # Format basic info
         symptoms = ', '.join(patient_info.get('symptoms', [])) or 'None reported'
         medical_history = ', '.join(patient_info.get('medical_history', [])) or 'None'
         insurance_status = "Insured" if patient_info.get('insurance', False) else "Uninsured"
-        assigned_department = patient_info.get('assigned_department', 'General') or 'General'
         
         # Get diagnosis
         diagnoses = medical_record.get('diagnoses', [])
         diagnosis_info = diagnoses[0] if diagnoses else {}
         
-        # Calculate stay duration
-        arrival = visit_info.get('arrival_time', '')
-        discharge = visit_info.get('discharge_time', '')
+        # Check if patient is active
+        current_status = visit_info.get('current_status', '')
+        is_active = current_status not in ['Discharged']
+        card_class = "patient-header active" if is_active else "patient-header"
         
         html_content += f"""
                 <div class="patient-card">
-                    <div class="patient-header" onclick="togglePatient('patient{i}')">
+                    <div class="{card_class}" onclick="togglePatient('patient{i}')">
                         <div>
                             <h3>{patient_info.get('name', 'Unknown')} (ID: {patient_info.get('id', 'Unknown')})</h3>
                             <div class="patient-basic-info">
                                 Age: {patient_info.get('age', 'Unknown')} | Gender: {patient_info.get('gender', 'Unknown')} | 
                                 {insurance_status} | Priority: {visit_info.get('priority', 'Unknown')} | 
-                                Status: <span class="status-badge status-discharged">{visit_info.get('current_status', 'Unknown')}</span>
+                                Status: <span class="status-badge {'status-active' if is_active else 'status-discharged'}">{current_status}</span>
+"""
+        
+        if patient_info.get('assigned_department'):
+            html_content += f" | Department: {patient_info.get('assigned_department')}"
+        
+        html_content += f"""
                             </div>
                         </div>
                         <span class="toggle-icon">▼</span>
@@ -543,24 +871,59 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                             <div class="detail-section">
                                 <h4>Visit Information</h4>
                                 <ul class="detail-list">
-                                    <li><strong>Arrival:</strong> {arrival}</li>
-                                    <li><strong>Discharge:</strong> {discharge}</li>
+                                    <li><strong>Arrival:</strong> {visit_info.get('arrival_time', 'Unknown')}</li>
+                                    <li><strong>Discharge:</strong> {visit_info.get('discharge_time', 'Not yet discharged' if not visit_info.get('discharge_time') else visit_info.get('discharge_time'))}</li>
                                     <li><strong>Waiting Time:</strong> {patient.get('waiting_time_seconds', 0)} seconds</li>
                                     <li><strong>Symptoms:</strong> {symptoms}</li>
                                     <li><strong>Medical History:</strong> {medical_history}</li>
-                                    <li><strong>Assigned Departments:</strong> {assigned_department}</li>
+"""
+        
+        if patient_info.get('consultation_history'):
+            consultation_history = ', '.join(patient_info.get('consultation_history', []))
+            html_content += f"""
+                                    <li><strong>Consultation History:</strong> {consultation_history}</li>
+"""
+        
+        html_content += """
                                 </ul>
                             </div>
                             
                             <div class="detail-section">
                                 <h4>Diagnosis & Treatment</h4>
                                 <ul class="detail-list">
+"""
+        
+        if diagnosis_info:
+            html_content += f"""
                                     <li><strong>Diagnosis:</strong> {diagnosis_info.get('diagnosis', 'No diagnosis recorded')}</li>
                                     <li><strong>Diagnosing Doctor:</strong> {diagnosis_info.get('doctor', 'Unknown')}</li>
                                     <li><strong>Diagnosis Time:</strong> {diagnosis_info.get('timestamp', 'N/A')}</li>
                                     <li><strong>Status:</strong> {diagnosis_info.get('status', 'N/A')}</li>
+"""
+            if diagnosis_info.get('thread_id'):
+                html_content += f"""
+                                    <li><strong>Thread ID:</strong> {diagnosis_info.get('thread_id')}</li>
+"""
+        else:
+            html_content += """
+                                    <li><strong>Diagnosis:</strong> No diagnosis recorded yet</li>
+"""
+        
+        html_content += """
                                 </ul>
                             </div>
+                        </div>
+"""
+
+        # Add threading information if available
+        if threading_info:
+            html_content += f"""
+                        <div class="threading-info">
+                            <strong>Threading Information:</strong> 
+                            Thread Safe: {threading_info.get('thread_safe', 'Unknown')} | 
+                            Total Operations: {threading_info.get('total_concurrent_operations', 0)} | 
+                            Operations by Thread: {threading_info.get('operations_by_thread', {})} |
+                            Processing Thread: {threading_info.get('processing_thread', 'None')}
                         </div>
 """
 
@@ -581,6 +944,12 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                                     <div>HR: {vital.get('heart_rate', 'N/A')} bpm</div>
                                     <div>RR: {vital.get('respiratory_rate', 'N/A')} /min</div>
                                 </div>
+"""
+                if vital.get('thread_id'):
+                    html_content += f"""
+                                <div style="font-size: 0.8em; color: #6c757d; margin-top: 5px;">Thread: {vital.get('thread_id')}</div>
+"""
+                html_content += """
                             </div>
 """
             html_content += """
@@ -590,9 +959,9 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
         # Add prescriptions
         prescriptions = medical_record.get('prescriptions', [])
         if prescriptions:
-            html_content += """
+            html_content += f"""
                         <div class="detail-section">
-                            <h4>Prescriptions</h4>
+                            <h4>Prescriptions ({len(prescriptions)})</h4>
 """
             for j, prescription in enumerate(prescriptions, 1):
                 html_content += f"""
@@ -631,7 +1000,7 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
         if consultations:
             html_content += f"""
                         <div class="detail-section">
-                            <h4>Consultations ({len(consultations)} consultations)</h4>
+                            <h4>Consultations ({len(consultations)})</h4>
 """
             for j, consultation in enumerate(consultations, 1):
                 html_content += f"""
@@ -658,7 +1027,14 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                 html_content += f"""
                                     <div class="note-item">
                                         <div class="note-header">{note.get('staff', 'Unknown Staff')} - {note.get('type', 'General').title()} Note</div>
-                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">{note.get('timestamp', 'Unknown time')}</div>
+                                        <div style="font-size: 0.8em; color: #6c757d; margin-bottom: 5px;">
+                                            {note.get('timestamp', 'Unknown time')}
+"""
+                if note.get('thread_id'):
+                    html_content += f" | Thread: {note.get('thread_id')}"
+                
+                html_content += f"""
+                                        </div>
                                         <div>{note.get('content', 'No content')}</div>
                                     </div>
 """
@@ -673,7 +1049,88 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                 </div>
 """
 
-    # Add operational details
+    html_content += """
+            </div>
+        </div>
+"""
+
+    # Financial Details Section
+    html_content += """
+        <!-- Financial Performance -->
+        <div class="section">
+            <div class="section-header" onclick="toggleSection('financial')">
+                <h2>Financial Performance</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="section-content collapsed" id="financial">
+                <table class="summary-table">
+                    <tr>
+                        <th>Financial Metric</th>
+                        <th>Value</th>
+                        <th>Details</th>
+                    </tr>
+"""
+    
+    if is_realtime:
+        html_content += f"""
+                    <tr>
+                        <td>Total Revenue</td>
+                        <td>${financial_summary.get('total_revenue', 0)}</td>
+                        <td>Revenue from all patient services</td>
+                    </tr>
+                    <tr>
+                        <td>Total Expenses</td>
+                        <td>${financial_summary.get('total_expenses', 0)}</td>
+                        <td>Operational costs and overhead</td>
+                    </tr>
+                    <tr>
+                        <td>Net Profit</td>
+                        <td>${financial_summary.get('profit', 0)}</td>
+                        <td>Revenue minus expenses</td>
+                    </tr>
+                    <tr>
+                        <td>Bills Count</td>
+                        <td>{financial_summary.get('bills_count', 0)}</td>
+                        <td>Total number of bills generated</td>
+                    </tr>
+"""
+    else:
+        fin_stats = stats.get('financial_summary', {})
+        html_content += f"""
+                    <tr>
+                        <td>Total Revenue</td>
+                        <td>{fin_stats.get('total_revenue', '$0')}</td>
+                        <td>Revenue from all patient services</td>
+                    </tr>
+                    <tr>
+                        <td>Total Expenses</td>
+                        <td>{fin_stats.get('total_expenses', '$0')}</td>
+                        <td>Operational costs and overhead</td>
+                    </tr>
+                    <tr>
+                        <td>Net Profit</td>
+                        <td>{fin_stats.get('profit', '$0')}</td>
+                        <td>Revenue minus expenses</td>
+                    </tr>
+                    <tr>
+                        <td>Bills Issued</td>
+                        <td>{fin_stats.get('bills_issued', 0)}</td>
+                        <td>Total number of bills generated</td>
+                    </tr>
+                    <tr>
+                        <td>Payment Rate</td>
+                        <td>{fin_stats.get('payment_rate', '0%')}</td>
+                        <td>Percentage of bills paid</td>
+                    </tr>
+"""
+    
+    html_content += """
+                </table>
+            </div>
+        </div>
+"""
+
+    # Operational Details Section
     html_content += """
         <!-- Operational Details -->
         <div class="section">
@@ -693,6 +1150,10 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                             <li><strong>Hospital Name:</strong> {hospital_info.get('name', 'Unknown')}</li>
                             <li><strong>Total Departments:</strong> {hospital_info.get('departments', 0)}</li>
                             <li><strong>Total Doctors:</strong> {hospital_info.get('total_doctors', 0)}</li>
+"""
+    
+    if hospital_info.get('operation_hours'):
+        html_content += f"""
                             <li><strong>Operation Hours:</strong> {hospital_info.get('operation_hours', 0)} hours</li>
 """
     
@@ -716,79 +1177,55 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
     html_content += """
                         </ul>
                     </div>
+"""
+
+    # Add daily statistics if available (real-time format)
+    if is_realtime and daily_stats:
+        html_content += """
+                    <div class="detail-section">
+                        <h4>Daily Statistics</h4>
+                        <ul class="detail-list">
+"""
+        html_content += f"""
+                            <li><strong>Patients Processed:</strong> {daily_stats.get('patients_processed', 0)}</li>
+                            <li><strong>Consultations Completed:</strong> {daily_stats.get('consultations_completed', 0)}</li>
+                            <li><strong>Tests Performed:</strong> {daily_stats.get('tests_performed', 0)}</li>
+                            <li><strong>Prescriptions Dispensed:</strong> {daily_stats.get('prescriptions_dispensed', 0)}</li>
+"""
+        html_content += """
+                        </ul>
+                    </div>
+"""
+
+    # Add operational metrics if available (legacy format)
+    if not is_realtime:
+        operational_metrics = stats.get('operational_metrics', {})
+        if operational_metrics:
+            html_content += """
                     <div class="detail-section">
                         <h4>Operational Metrics</h4>
                         <ul class="detail-list">
 """
-    
-    operational_metrics = stats.get('operational_metrics', {})
-    html_content += f"""
+            html_content += f"""
                             <li><strong>Avg. Processing Time:</strong> {operational_metrics.get('avg_patient_processing_time', 'N/A')}</li>
                             <li><strong>Patient Satisfaction:</strong> {operational_metrics.get('patient_satisfaction_score', 'N/A')}</li>
                             <li><strong>Bed Occupancy Rate:</strong> {operational_metrics.get('bed_occupancy_rate', 'N/A')}</li>
                             <li><strong>Equipment Utilization:</strong> {operational_metrics.get('equipment_utilization', 'N/A')}</li>
 """
-    
-    html_content += """
+            html_content += """
                         </ul>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Doctor Details -->
-        <div class="section">
-            <div class="section-header" onclick="toggleSection('doctor-details')">
-                <h2>Detailed Doctor Information</h2>
-                <span class="toggle-icon">▼</span>
-            </div>
-            <div class="section-content collapsed" id="doctor-details">
-"""
-
-    # Add detailed doctor information
-    for doctor in doctors:
-        doctor_info = doctor.get('doctor_info', {})
-        daily_metrics = doctor.get('daily_metrics', {})
-        current_status = doctor.get('current_status', {})
-        performance = doctor.get('performance_metrics', {})
-        
-        html_content += f"""
-                <div class="detail-section" style="margin-bottom: 15px;">
-                    <h4>{doctor_info.get('name', 'Unknown')} - {doctor_info.get('specialty', 'Unknown')}</h4>
-                    <div class="detail-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-                        <div>
-                            <strong>Basic Info:</strong><br>
-                            Staff ID: {doctor_info.get('staff_id', 'Unknown')}<br>
-                            Experience: {doctor_info.get('experience_years', 0)} years<br>
-                            Current Status: {current_status.get('status', 'Unknown')}
-                        </div>
-                        <div>
-                            <strong>Daily Metrics:</strong><br>
-                            Patients Seen: {daily_metrics.get('patients_seen', 0)}<br>
-                            Max Capacity: {daily_metrics.get('max_capacity', 0)}<br>
-                            Utilization: {daily_metrics.get('utilization_rate', 0):.1f}%
-                        </div>
-                        <div>
-                            <strong>Performance:</strong><br>
-                            Total Consultations: {performance.get('total_consultations', 0)}<br>
-                            Avg Consultation Time: {performance.get('average_consultation_time', 0):.2f} min<br>
-                            Specialization Cases: {performance.get('specialization_cases', 0)}
-                        </div>
-                        <div>
-                            <strong>Schedule:</strong><br>
-                            Shift Start: {current_status.get('shift_start', 'N/A')}<br>
-                            Shift End: {current_status.get('shift_end', 'N/A')}<br>
-                            Available: {'Yes' if current_status.get('is_available', False) else 'No'}
-                        </div>
-                    </div>
-                </div>
 """
 
     html_content += """
+                </div>
             </div>
         </div>
+"""
 
-        <!-- System Metadata -->
+    # Simulation Metadata Section
+    html_content += """
+        <!-- Simulation Metadata -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('metadata')">
                 <h2>Simulation Metadata</h2>
@@ -799,37 +1236,36 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
                     <tr>
                         <th>Parameter</th>
                         <th>Value</th>
-                    </tr>"""
-
-    # Add metadata rows dynamically
-    html_content += f"""
-                    <tr>
-                        <td>Export Time</td>
-                        <td>{metadata.get('export_time', 'Unknown')}</td>
                     </tr>
+"""
+    
+    # Add all metadata fields dynamically
+    for key, value in metadata.items():
+        display_key = key.replace('_', ' ').title()
+        html_content += f"""
                     <tr>
-                        <td>Hospital Name</td>
-                        <td>{metadata.get('hospital_name', 'Unknown')}</td>
+                        <td>{display_key}</td>
+                        <td>{value}</td>
                     </tr>
+"""
+    
+    # Add real-time specific metadata
+    if is_realtime and real_time.get('snapshot_time'):
+        html_content += f"""
                     <tr>
-                        <td>Total Patients</td>
-                        <td>{metadata.get('total_patients', 0)}</td>
+                        <td>Snapshot Time</td>
+                        <td>{real_time.get('snapshot_time')}</td>
                     </tr>
-                    <tr>
-                        <td>Total Doctors</td>
-                        <td>{metadata.get('total_doctors', 0)}</td>
-                    </tr>
-                    <tr>
-                        <td>Simulation Duration</td>
-                        <td>{metadata.get('simulation_duration_hours', 0):.4f} hours</td>
-                    </tr>
+"""
+    
+    html_content += """
                 </table>
             </div>
         </div>
 
         <!-- Footer -->
         <div style="text-align: center; padding: 20px; color: #6c757d; font-size: 0.9em; background: white; border-radius: 8px; margin-top: 20px;">
-            <p>Hospital Simulation System Report | Generated: """ + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + """</p>
+            <p>Hospital Simulation System Report | Generated: """ + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + f" | Format: {'Real-Time Data' if is_realtime else 'Legacy Export'}" + """</p>
         </div>
     </div>
 
@@ -897,21 +1333,10 @@ def generate_hospital_report(json_file_path, output_file_path="hospital_report.h
 # Example usage
 if __name__ == "__main__":
     # Replace with your actual JSON file path
-    json_file = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/continuous_hospital_simulation_20250903_112437.json"
+    json_file = "/Users/adamchen/Desktop/VSCode/twinhospital/exports/continuous_hospital_simulation_20250904_112303.json"  # Change this to your file name
     
     try:
         output_path = generate_hospital_report(json_file)
-        print(f"\nReport generated at: {output_path}")
-        print("Open the HTML file in your web browser to view the report.")
-        print("\nReport includes:")
-        print("- Executive summary with key metrics")
-        print("- Financial performance details")
-        print("- Complete doctor performance data")
-        print("- Resource utilization tables")
-        print("- Detailed patient records with all medical info")
-        print("- All test results, prescriptions, notes, and vitals")
-        print("- Collapsible sections for easy navigation")
-        print("- Mobile-responsive design")
     except FileNotFoundError:
         print(f"Error: Could not find the JSON file '{json_file}'")
         print("Please ensure the file path is correct.")

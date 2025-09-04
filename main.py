@@ -10,10 +10,10 @@ from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import our classes
-from backend.config import load_config, get_config, get_export_config
+from backend.config import load_config, get_config
 from backend.models.Patient import Patient
 from backend.models.Doctor import Doctor
-from backend.models.Hospital import ThreadSafeHospital
+from backend.models.Hospital import Hospital
 
 def setup_logging():
     """Setup comprehensive logging system with thread safety and continuous export."""
@@ -256,62 +256,27 @@ def generate_doctors_from_config() -> List[Doctor]:
     logger.info(f"Generated {len(doctors)} doctors for continuous export hospital operations")
     return doctors
 
-def setup_hospital_with_continuous_export() -> ThreadSafeHospital:
+def setup_hospital() -> Hospital:
     """Setup hospital with continuous export enabled."""
     config = get_config()
-    export_config = get_export_config()
     logger = logging.getLogger(__name__)
     
     # Generate doctors
     doctors = generate_doctors_from_config()
     
     # Create thread-safe hospital with continuous export
-    hospital = ThreadSafeHospital(
+    hospital = Hospital(
         name="Twin Digital Medical Center",
         doctors=doctors,
-        continuous_export=export_config.enabled,
-        export_interval=export_config.export_interval,
-        export_on_events=export_config.export_on_events
+        continuous_export_enabled=config.export.enabled,
+        export_interval=config.export.export_interval,
+        export_on_events=config.export.export_on_events
     )
     
-    logger.info(f"Hospital with continuous export setup complete - Export enabled: {export_config.enabled}")
+    logger.info(f"Hospital with continuous export setup complete - Export enabled: {config.export.enabled}")
     return hospital
 
-def demonstrate_continuous_export_features(hospital: ThreadSafeHospital) -> None:
-    """Demonstrate continuous export features."""
-    print("\n" + "="*80)
-    print(f"{'CONTINUOUS EXPORT DEMONSTRATION':^80}")
-    print("="*80)
-    
-    # Show export status
-    export_status = hospital.get_continuous_export_status()
-    print(f"\nContinuous Export Status:")
-    print(f"  • Enabled: {export_status['enabled']}")
-    print(f"  • Export File: {export_status['export_file_path']}")
-    print(f"  • Update Interval: {export_status['export_interval']} seconds")
-    print(f"  • Event-based Export: {export_status['export_on_events']}")
-    print(f"  • Background Thread Active: {export_status['export_thread_active']}")
-    
-    if export_status['file_exists']:
-        print(f"  • Current File Size: {export_status['file_size_bytes']} bytes")
-    
-    # Test manual export trigger
-    print(f"\n🔄 Testing manual export trigger...")
-    if hospital.force_export_update():
-        print(f"  ✅ Manual export successful")
-    else:
-        print(f"  ❌ Manual export failed")
-    
-    # Show what happens during simulation
-    print(f"\n📊 During simulation, exports will be triggered by:")
-    config = get_export_config()
-    for event in config.trigger_events:
-        print(f"  • {event.replace('_', ' ').title()}")
-    
-    print(f"\n📁 Export file will be continuously updated at:")
-    print(f"  {export_status['export_file_path']}")
-
-def run_simulation_with_continuous_export_demo(hospital: ThreadSafeHospital, patients: List[Patient]) -> Dict[str, Any]:
+def run_simulation(hospital: Hospital, patients: List[Patient]) -> Dict[str, Any]:
     """Run simulation with live continuous export demonstration."""
     logger = logging.getLogger(__name__)
     simulation_start = datetime.now()
@@ -368,12 +333,14 @@ def run_simulation_with_continuous_export_demo(hospital: ThreadSafeHospital, pat
     logger.info(f"Simulation with continuous export completed - {len(visit_summaries)} patients processed")
     return simulation_results
 
-def monitor_export_file_changes(export_file_path: Path, duration_seconds: int = 60) -> None:
+def monitor_export(export_file_path: Path) -> None:
     """Monitor and display export file changes in real-time."""
     if not export_file_path or not export_file_path.exists():
         print("Export file not found for monitoring")
         return
     
+    config = get_config()
+    duration_seconds = config.monitoring.duration_seconds if hasattr(config.monitoring, 'duration_seconds') else 120
     print(f"\n📊 Monitoring export file changes for {duration_seconds} seconds...")
     print(f"File: {export_file_path}")
     print("-" * 60)
@@ -422,25 +389,21 @@ def main():
     try:
         # Load configuration with continuous export settings
         print("Loading system configuration with continuous export settings...")
-        config = load_config("default.yaml")  # Use enhanced config
-        export_config = get_export_config()
+        config = load_config("default.yaml")
         
         logger.info("Configuration loaded successfully with continuous export")
         print(f"✅ Configuration loaded: {config.patient_data.number_of_patients} patients, "
               f"{len(config.get_specialties())} specialties")
-        print(f"📤 Continuous Export: {'Enabled' if export_config.enabled else 'Disabled'}")
+        print(f"📤 Continuous Export: {'Enabled' if config.export.enabled else 'Disabled'}")
         
         # Setup hospital with continuous export
         print("Initializing hospital system with continuous export...")
-        hospital = setup_hospital_with_continuous_export()
+        hospital = setup_hospital()
         print(f"✅ Hospital '{hospital.name}' initialized with {len(hospital.doctors)} doctors")
-        
-        # Demonstrate continuous export features
-        demonstrate_continuous_export_features(hospital)
         
         # Generate patients
         print("Generating patient population...")
-        patients = generate_random_patients(8)  # Smaller number for demo
+        patients = generate_random_patients(config.patient_data.number_of_patients)
         print(f"✅ Generated {len(patients)} patients")
         
         # Get export file path for monitoring
@@ -450,15 +413,15 @@ def main():
         # Start file monitoring in background thread
         if export_file_path:
             monitor_thread = threading.Thread(
-                target=monitor_export_file_changes,
-                args=(export_file_path, 120),  # Monitor for 2 minutes
+                target=monitor_export,
+                args=(export_file_path, config.monitoring.duration_seconds),
                 daemon=True
             )
             monitor_thread.start()
         
         # Run simulation with continuous export
         print(f"\n🚀 Starting simulation with live continuous export...")
-        simulation_results = run_simulation_with_continuous_export_demo(hospital, patients)
+        simulation_results = run_simulation(hospital, patients)
         
         # Display results
         print("\n" + "="*80)
@@ -494,14 +457,6 @@ def main():
         print(f"   • Total revenue: {concurrent_metrics['total_revenue']}")
         print(f"   • Average visit time: {concurrent_metrics['average_visit_duration_minutes']} minutes")
         
-        # Export-specific benefits
-        print(f"\n💡 CONTINUOUS EXPORT BENEFITS:")
-        print(f"   • Real-time monitoring during simulation")
-        print(f"   • Data available immediately (not just at end)")
-        print(f"   • Supports external monitoring tools")
-        print(f"   • Thread-safe concurrent updates")
-        print(f"   • Automatic backup of simulation progress")
-        
         # Final cleanup
         print("\n🧹 Cleaning up...")
         hospital.cleanup_continuous_export()
@@ -530,33 +485,5 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Enhanced command line arguments
-    if len(sys.argv) > 1:
-        if sys.argv[1] == "--disable-export":
-            # Run with continuous export disabled
-            print("Running simulation with continuous export DISABLED")
-            # Modify config to disable export
-            # ... implementation for disabled mode
-            
-        elif sys.argv[1] == "--export-demo":
-            # Run focused export demonstration
-            print("Running CONTINUOUS EXPORT demonstration")
-            main()
-            
-        elif sys.argv[1] == "--monitor-only":
-            # Just monitor an existing export file
-            export_file = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("exports").glob("continuous_hospital_simulation_*.json")
-            if export_file:
-                monitor_export_file_changes(export_file, duration_seconds=300)  # 5 minutes
-            else:
-                print("No export file found to monitor")
-                
-        else:
-            print("Available options:")
-            print("  python main.py                    # Run with continuous export (default)")
-            print("  python main.py --export-demo      # Focused export demonstration")
-            print("  python main.py --disable-export   # Run without continuous export")
-            print("  python main.py --monitor-only [file]  # Monitor existing export file")
-    else:
-        # Run standard simulation with continuous export (default)
-        main()
+    # Run standard simulation with continuous export (default)
+    main()

@@ -136,35 +136,13 @@ hospital_data:
       - "CT"
       - "Ultrasound"
 
-# NEW: Continuous Export Configuration
+# Continuous Export Configuration
 continuous_export:
   enabled: true                    # Enable/disable continuous export
   export_interval: 5              # Seconds between automatic exports (0 to disable scheduled exports)
   export_on_events: true           # Export immediately on key events (patient admission, discharge, etc.)
   export_directory: "exports"      # Directory to save export files
-  file_name_pattern: "continuous_hospital_simulation_{timestamp}.json"  # File naming pattern
-  max_history_entries: 1000         # Maximum number of historical entries to keep in export
-  
-  # Events that trigger immediate export (when export_on_events is true)
-  trigger_events:
-    - "patient_admission"
-    - "patient_discharge"  
-    - "billing_event"
-    - "payment_processed"
-    - "consultation_complete"
-    - "test_complete"
-  
-  # Data sections to include in continuous export
-  export_sections:
-    patients_processed: true       # Include all processed patients
-    active_patients: true          # Include currently active patients
-    hospital_statistics: true     # Include hospital statistics
-    resource_logs: true           # Include resource utilization logs
-    patient_logs: true            # Include patient event logs
-    billing_records: true         # Include billing information
-    doctor_statuses: true         # Include real-time doctor statuses
-    room_utilization: true        # Include room utilization data
-    daily_statistics: true        # Include daily operational statistics
+  file_name_pattern: "hospital_simulation_{timestamp}.json"  # File naming pattern
 
 # Enhanced LLM Configuration
 llm:
@@ -178,16 +156,7 @@ llm:
   presence_penalty: 0.0
   max_workers: 4
 
-# System Performance and Monitoring
+# Export Monitoring
 monitoring:
-  log_level: "INFO"               # Logging level: DEBUG, INFO, WARNING, ERROR
-  performance_tracking: true      # Enable performance metrics tracking
-  resource_monitoring: true       # Enable resource utilization monitoring
-  thread_safety_logging: true     # Enable detailed thread safety logging
-  
-  # Alerts and notifications
-  alerts:
-    resource_contention_threshold: 80    # Percentage threshold for resource alerts
-    patient_wait_time_threshold: 60      # Minutes before wait time alert
-    system_error_threshold: 5           # Number of errors before alert
-    low_doctor_availability_threshold: 20  # Percentage of available doctors before alert
+  enabled: true                    # Enable/disable real-time export monitoring
+  duration_seconds: 360             # Duration to monitor export file changes

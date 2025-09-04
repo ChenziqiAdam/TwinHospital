@@ -8,6 +8,7 @@ import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+
 from ..config import get_config
 from ..providers.llm import LLM
 from ..prompts.triage_nurse import TRIAGE_NURSE_PROMPT
@@ -15,22 +16,23 @@ from ..prompts.consultation_doctor import CONSULTATION_DOCTOR_PROMPT
 from ..prompts.test_examination import TEST_EXAMINATION_PROMPT
 from ..prompts.test_lab import TEST_LAB_PROMPT
 from ..prompts.follow_up_consultation_doctor import FOLLOW_UP_CONSULTATION_PROMPT
+from .HospitalExportSystem import HospitalExportSystem
 
 # Configure logger for Hospital class
 logger = logging.getLogger(__name__)
 
-class ThreadSafeHospital:
-    def __init__(self, name: str, doctors: List = None, continuous_export: bool = True, 
+class Hospital:
+    def __init__(self, name: str, doctors: List = None, continuous_export_enabled: bool = True, 
                  export_interval: int = 30, export_on_events: bool = True):
         """
-        Initializes the Hospital instance with thread-safe resource management and continuous export.
+        Initializes the Hospital instance with thread-safe resource management.
         
         Args:
             name (str): The name of the hospital.
             doctors (list, optional): A list of Doctor objects in the hospital.
             continuous_export (bool): Enable continuous JSON export during simulation.
-            export_interval (int): Seconds between automatic exports (if continuous_export=True).
-            export_on_events (bool): Export immediately on key events (patient admission, discharge, etc.).
+            export_interval (int): Seconds between automatic exports.
+            export_on_events (bool): Export immediately on key events.
         """
         config = get_config()
         self.llm = LLM(llm_config=config.llm_config)
@@ -44,24 +46,23 @@ class ThreadSafeHospital:
         self.active_patients = {}  # Patients currently in the hospital
         
         # Thread-safe locks for resource management
-        self.rooms_lock = threading.RLock()  # Reentrant lock for room operations
-        self.doctors_lock = threading.RLock()  # Reentrant lock for doctor operations
-        self.devices_lock = threading.RLock()  # Reentrant lock for device operations
-        self.billing_lock = threading.RLock()  # Reentrant lock for billing operations
-        self.statistics_lock = threading.RLock()  # Reentrant lock for statistics
-        self.patients_lock = threading.RLock()  # Reentrant lock for patient management
+        self.rooms_lock = threading.RLock()
+        self.doctors_lock = threading.RLock()
+        self.devices_lock = threading.RLock()
+        self.billing_lock = threading.RLock()
+        self.statistics_lock = threading.RLock()
+        self.patients_lock = threading.RLock()
         
-        # NEW: Continuous export configuration and locks
-        self.export_lock = threading.RLock()  # Lock for export operations
-        self.continuous_export_enabled = continuous_export
-        self.export_interval = export_interval
-        self.export_on_events = export_on_events
-        self.export_file_path = None
-        self.last_export_time = datetime.now()
-        self.export_thread = None
-        self.export_shutdown_event = threading.Event()
+        # Initialize export system
+        self.export_system = HospitalExportSystem(
+            hospital_name=name,
+            hospital_id=self.id,
+            continuous_export_enabled=continuous_export_enabled,
+            export_interval=export_interval,
+            export_on_events=export_on_events
+        )
         
-        # Initialize resources with thread safety in mind
+        # Initialize resources
         self.rooms = self._initialize_rooms()
         self.medical_devices = self._initialize_devices()
         self.medical_tests = self._initialize_tests()
@@ -89,406 +90,15 @@ class ThreadSafeHospital:
             "prescriptions_dispensed": 0
         }
         
-        # Thread pool for patient processing
-        self.max_concurrent_patients = min(len(self.doctors) * 2, 10)  # Limit concurrent patients
-        
-        # NEW: Initialize continuous export system
-        if self.continuous_export_enabled:
-            self._initialize_continuous_export()
+        # Thread pool configuration
+        self.max_concurrent_patients = min(len(self.doctors) * 2, 10)
         
         # Log hospital initialization
         logger.info(self._format_log_entry("INITIALIZATION", 
             f"Thread-safe hospital '{name}' initialized with {len(self.doctors)} doctors and {len(self.departments)} departments"))
-        logger.info(self._format_log_entry("CONTINUOUS_EXPORT", 
-            f"Continuous export: {'Enabled' if continuous_export else 'Disabled'}, Interval: {export_interval}s"))
         print(self._format_console_header())
         print(self._format_console_message("INIT", 
             f"Welcome to {self.name}! Thread-safe hospital system initialized"))
-        if continuous_export:
-            print(self._format_console_message("EXPORT", 
-                f"Continuous export enabled - Updates every {export_interval}s"))
-
-    def _initialize_continuous_export(self) -> None:
-        """Initialize the continuous export system."""
-        # Create exports directory
-        export_dir = Path("exports")
-        export_dir.mkdir(exist_ok=True)
-        
-        # Set up continuous export file path
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        self.export_file_path = export_dir / f"continuous_hospital_simulation_{timestamp}.json"
-        
-        # Create initial export file with metadata
-        initial_data = {
-            "simulation_metadata": {
-                "hospital_name": self.name,
-                "hospital_id": self.id,
-                "simulation_start": datetime.now().isoformat(),
-                "continuous_export_enabled": True,
-                "export_interval_seconds": self.export_interval,
-                "last_update": datetime.now().isoformat()
-            },
-            "real_time_data": {
-                "patients_processed": [],
-                "active_patients": {},
-                "hospital_statistics": {},
-                "resource_logs": [],
-                "patient_logs": [],
-                "billing_records": []
-            }
-        }
-        
-        with open(self.export_file_path, 'w', encoding='utf-8') as f:
-            json.dump(initial_data, f, indent=2, default=self._json_serializer)
-        
-        # Start background export thread if interval-based export is enabled
-        if self.export_interval > 0:
-            self.export_thread = threading.Thread(
-                target=self._continuous_export_worker,
-                name="ContinuousExport",
-                daemon=True
-            )
-            self.export_thread.start()
-        
-        logger.info(self._format_log_entry("EXPORT_INIT", 
-            f"Continuous export initialized - File: {self.export_file_path}"))
-
-    def _continuous_export_worker(self) -> None:
-        """Background worker thread for continuous export."""
-        logger.info(self._format_log_entry("EXPORT_WORKER", "Continuous export worker started"))
-        
-        while not self.export_shutdown_event.wait(self.export_interval):
-            try:
-                self._update_continuous_export("scheduled_update")
-            except Exception as e:
-                logger.error(self._format_log_entry("EXPORT_ERROR", 
-                    f"Error in continuous export worker: {str(e)}"))
-        
-        logger.info(self._format_log_entry("EXPORT_WORKER", "Continuous export worker stopped"))
-
-    def _update_continuous_export(self, trigger_event: str = "manual") -> None:
-        """Update the continuous export JSON file with current state."""
-        if not self.continuous_export_enabled or not self.export_file_path:
-            return
-        
-        with self.export_lock:
-            try:
-                # Gather current state with thread-safe locks
-                current_state = self._gather_current_state()
-                
-                # Read existing file
-                try:
-                    with open(self.export_file_path, 'r', encoding='utf-8') as f:
-                        export_data = json.load(f)
-                except (FileNotFoundError, json.JSONDecodeError):
-                    export_data = {"simulation_metadata": {}, "real_time_data": {}}
-                
-                # Update metadata
-                export_data["simulation_metadata"].update({
-                    "last_update": datetime.now().isoformat(),
-                    "update_trigger": trigger_event,
-                    "updates_count": export_data["simulation_metadata"].get("updates_count", 0) + 1
-                })
-                
-                # Update real-time data
-                export_data["real_time_data"] = current_state
-                
-                # Write updated data atomically (write to temp file then rename)
-                temp_file_path = self.export_file_path.with_suffix('.tmp')
-                with open(temp_file_path, 'w', encoding='utf-8') as f:
-                    json.dump(export_data, f, indent=2, default=self._json_serializer)
-                
-                # Atomic rename
-                temp_file_path.replace(self.export_file_path)
-                
-                self.last_export_time = datetime.now()
-                
-                logger.debug(self._format_log_entry("EXPORT_UPDATE", 
-                    f"Continuous export updated - Trigger: {trigger_event}"))
-                
-            except Exception as e:
-                logger.exception(self._format_log_entry("EXPORT_ERROR", 
-                    f"Failed to update continuous export."))
-
-    def _gather_current_state(self) -> Dict[str, Any]:
-        """Gather current hospital state for export (thread-safe)."""
-        current_state = {}
-        
-        # Patient information
-        with self.patients_lock:
-            current_state["patients_processed"] = [
-                patient.get_medical_summary() for patient in self.patients.values()
-            ]
-            current_state["active_patients"] = {
-                pid: {
-                    "name": patient.name,
-                    "status": patient.status,
-                    "priority": patient.priority,
-                    "arrival_time": patient.arrival_time.isoformat(),
-                    "assigned_department": patient.assigned_department
-                }
-                for pid, patient in self.active_patients.items()
-            }
-        
-        # Hospital statistics
-        with self.statistics_lock:
-            current_state["hospital_statistics"] = self.generate_hospital_statistics()
-            current_state["daily_statistics"] = self.daily_statistics.copy()
-        
-        # Resource logs
-        current_state["resource_logs"] = self.resource_logs[-50:]  # Last 50 entries
-        current_state["patient_logs"] = self.patient_logs[-50:]    # Last 50 entries
-        
-        # Financial information
-        with self.billing_lock:
-            current_state["billing_records"] = self.billing_records[-20:]  # Last 20 bills
-            current_state["financial_summary"] = {
-                "total_revenue": self.revenue,
-                "total_expenses": self.expenses,
-                "profit": self.revenue - self.expenses,
-                "bills_count": len(self.billing_records)
-            }
-        
-        # Doctor statuses
-        with self.doctors_lock:
-            current_state["doctor_statuses"] = [
-                {
-                    "name": doctor.name,
-                    "specialty": doctor.specialty,
-                    "status": doctor.status,
-                    "patients_seen_today": doctor.patients_seen_today,
-                    "is_available": doctor.is_available()
-                }
-                for doctor in self.doctors
-            ]
-        
-        # Room utilization
-        with self.rooms_lock:
-            current_state["room_utilization"] = self.rooms.copy()
-        
-        # Timestamp
-        current_state["snapshot_time"] = datetime.now().isoformat()
-        
-        return current_state
-
-    def _json_serializer(self, obj):
-        """Custom JSON serializer for datetime objects."""
-        if isinstance(obj, datetime):
-            return obj.isoformat()
-        elif isinstance(obj, timedelta):
-            return str(obj)
-        raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-    def _trigger_export_update(self, event_type: str) -> None:
-        """Trigger an export update if event-based export is enabled."""
-        if self.export_on_events and self.continuous_export_enabled:
-            # Run export update in a separate thread to avoid blocking main operations
-            export_thread = threading.Thread(
-                target=self._update_continuous_export,
-                args=(event_type,),
-                daemon=True
-            )
-            export_thread.start()
-
-    # Modify existing methods to include export triggers
-
-    def admit_patient(self, patient) -> bool:
-        """Thread-safe patient admission with continuous export."""
-        with self.patients_lock:
-            if patient.id in self.active_patients:
-                logger.warning(self._format_log_entry("ADMISSION_DUPLICATE", 
-                    f"Patient {patient.id} ({patient.name}) is already admitted"))
-                return False
-            
-            self.patients[patient.id] = patient
-            self.active_patients[patient.id] = patient
-            
-            with self.statistics_lock:
-                self.daily_statistics["patients_processed"] += 1
-            
-            admission_record = {
-                "event": "admission", "patient_id": patient.id, "patient_name": patient.name,
-                "timestamp": datetime.now(), "priority": patient.priority, "insurance": patient.insurance,
-                "thread_id": threading.current_thread().name
-            }
-            
-            self.patient_logs.append(admission_record)
-            
-            logger.info(self._format_log_entry("PATIENT_ADMISSION", 
-                f"[Thread: {threading.current_thread().name}] Patient {patient.id} ({patient.name}) admitted"))
-            print(self._format_console_message("ADMISSION", 
-                f"[{threading.current_thread().name}] Admitting {patient.name} - Priority {patient.priority}"))
-            
-            # NEW: Trigger export update
-            self._trigger_export_update("patient_admission")
-            
-            return True
-
-    def discharge_patient(self, patient) -> bool:
-        """Thread-safe patient discharge with continuous export."""
-        with self.patients_lock:
-            if patient.id not in self.active_patients:
-                logger.warning(self._format_log_entry("DISCHARGE_ERROR", 
-                    f"Patient {patient.id} ({patient.name}) is not currently admitted"))
-                return False
-            
-            patient.discharge()
-            del self.active_patients[patient.id]
-            
-            total_stay = (patient.discharge_time - patient.arrival_time).total_seconds() / 3600
-            
-            discharge_record = {
-                "event": "discharge", "patient_id": patient.id, "patient_name": patient.name,
-                "timestamp": patient.discharge_time, "total_stay_hours": round(total_stay, 2),
-                "diagnoses_count": len(patient.medical_record.get("diagnoses", [])),
-                "prescriptions_count": len(patient.medical_record.get("prescriptions", [])),
-                "thread_id": threading.current_thread().name
-            }
-            
-            self.patient_logs.append(discharge_record)
-            
-            logger.info(self._format_log_entry("PATIENT_DISCHARGE", 
-                f"[Thread: {threading.current_thread().name}] Patient {patient.id} discharged after {total_stay:.1f} hours"))
-            print(self._format_console_message("DISCHARGE", 
-                f"[{threading.current_thread().name}] {patient.name} discharged after {total_stay:.1f} hours"))
-            
-            # NEW: Trigger export update
-            self._trigger_export_update("patient_discharge")
-            
-            return True
-
-    def bill_patient(self, patient, amount: float, service_description: str) -> str:
-        """Thread-safe billing with continuous export."""
-        with self.billing_lock:
-            bill_id = str(uuid.uuid4())[:8]
-            bill = {
-                "bill_id": bill_id, "patient_id": patient.id, "patient_name": patient.name,
-                "amount": amount, "service": service_description, "timestamp": datetime.now(),
-                "status": "Pending", "insurance": patient.insurance, "department": "General",
-                "thread_id": threading.current_thread().name
-            }
-            
-            self.billing_records.append(bill)
-            
-            logger.info(self._format_log_entry("BILLING", 
-                f"[Thread: {threading.current_thread().name}] Bill {bill_id} created - ${amount} for {service_description}"))
-            
-            # NEW: Trigger export update for significant financial events
-            if amount > 100:  # Only trigger for significant bills
-                self._trigger_export_update("billing_event")
-            
-            return bill_id
-
-    def process_payment(self, bill_id: str, amount_paid: float) -> bool:
-        """Thread-safe payment processing with continuous export."""
-        with self.billing_lock:
-            for bill in self.billing_records:
-                if bill["bill_id"] == bill_id:
-                    if amount_paid >= bill["amount"]:
-                        bill["status"] = "Paid"
-                        bill["amount_paid"] = amount_paid
-                        bill["payment_time"] = datetime.now()
-                        bill["change"] = amount_paid - bill["amount"]
-                        
-                        self.revenue += bill["amount"]
-                        
-                        logger.info(self._format_log_entry("PAYMENT", 
-                            f"[Thread: {threading.current_thread().name}] Payment processed - Bill {bill_id}: ${amount_paid}"))
-                        
-                        # NEW: Trigger export update for payments
-                        self._trigger_export_update("payment_processed")
-                        return True
-                    else:
-                        bill["status"] = "Partial Payment"
-                        bill["amount_paid"] = amount_paid
-                        bill["payment_time"] = datetime.now()
-                        bill["remaining_balance"] = bill["amount"] - amount_paid
-                        
-                        self.revenue += amount_paid
-                        return True
-            
-            logger.error(self._format_log_entry("PAYMENT_ERROR", f"Bill {bill_id} not found"))
-            return False
-
-    def get_continuous_export_status(self) -> Dict[str, Any]:
-        """Get current status of continuous export system."""
-        with self.export_lock:
-            return {
-                "enabled": self.continuous_export_enabled,
-                "export_file_path": str(self.export_file_path) if self.export_file_path else None,
-                "export_interval": self.export_interval,
-                "export_on_events": self.export_on_events,
-                "last_export_time": self.last_export_time.isoformat(),
-                "export_thread_active": self.export_thread is not None and self.export_thread.is_alive(),
-                "file_exists": self.export_file_path.exists() if self.export_file_path else False,
-                "file_size_bytes": self.export_file_path.stat().st_size if self.export_file_path and self.export_file_path.exists() else 0
-            }
-
-    def enable_continuous_export(self, export_interval: int = 30, export_on_events: bool = True) -> bool:
-        """Enable continuous export if it was disabled."""
-        if self.continuous_export_enabled:
-            logger.warning(self._format_log_entry("EXPORT_WARNING", "Continuous export already enabled"))
-            return False
-        
-        self.continuous_export_enabled = True
-        self.export_interval = export_interval
-        self.export_on_events = export_on_events
-        
-        try:
-            self._initialize_continuous_export()
-            logger.info(self._format_log_entry("EXPORT_ENABLED", 
-                f"Continuous export enabled - Interval: {export_interval}s, Events: {export_on_events}"))
-            return True
-        except Exception as e:
-            logger.error(self._format_log_entry("EXPORT_ENABLE_ERROR", 
-                f"Failed to enable continuous export: {str(e)}"))
-            self.continuous_export_enabled = False
-            return False
-
-    def disable_continuous_export(self) -> bool:
-        """Disable continuous export system."""
-        if not self.continuous_export_enabled:
-            return False
-        
-        with self.export_lock:
-            self.continuous_export_enabled = False
-            self.export_shutdown_event.set()
-            
-            if self.export_thread and self.export_thread.is_alive():
-                self.export_thread.join(timeout=5)
-            
-            # Final export before shutdown
-            self._update_continuous_export("shutdown")
-            
-            logger.info(self._format_log_entry("EXPORT_DISABLED", "Continuous export disabled"))
-            return True
-
-    def force_export_update(self) -> bool:
-        """Force an immediate export update."""
-        if not self.continuous_export_enabled:
-            logger.warning(self._format_log_entry("EXPORT_WARNING", "Continuous export is disabled"))
-            return False
-        
-        try:
-            self._update_continuous_export("manual_force")
-            logger.info(self._format_log_entry("EXPORT_FORCED", "Manual export update completed"))
-            return True
-        except Exception as e:
-            logger.error(self._format_log_entry("EXPORT_FORCE_ERROR", 
-                f"Failed to force export update: {str(e)}"))
-            return False
-
-    def cleanup_continuous_export(self) -> None:
-        """Clean up continuous export system resources."""
-        if self.continuous_export_enabled:
-            self.disable_continuous_export()
-
-    def __del__(self):
-        """Cleanup when hospital object is destroyed."""
-        try:
-            self.cleanup_continuous_export()
-        except:
-            pass
 
     def _initialize_rooms(self) -> Dict[str, Dict[str, int]]:
         """Initialize room configuration from config file."""
@@ -629,6 +239,9 @@ class ThreadSafeHospital:
             print(self._format_console_message("ADMISSION", 
                 f"[{threading.current_thread().name}] Admitting {patient.name} - Priority {patient.priority}"))
             
+            # Trigger export update for admission event
+            self._trigger_export_update("patient_admission")
+            
             return True
 
     def discharge_patient(self, patient) -> bool:
@@ -658,6 +271,9 @@ class ThreadSafeHospital:
                 f"[Thread: {threading.current_thread().name}] Patient {patient.id} discharged after {total_stay:.1f} hours"))
             print(self._format_console_message("DISCHARGE", 
                 f"[{threading.current_thread().name}] {patient.name} discharged after {total_stay:.1f} hours"))
+            
+            # Trigger export update for discharge event
+            self._trigger_export_update("patient_discharge")
             
             return True
 
@@ -690,10 +306,8 @@ class ThreadSafeHospital:
                     
                     return True
             
-            # Room not available, wait briefly before retrying
             time.sleep(0.1)
         
-        # Timeout reached
         logger.warning(self._format_log_entry("ROOM_TIMEOUT", 
             f"[Thread: {threading.current_thread().name}] Timeout waiting for {room_type} room"))
         print(self._format_console_message("TIMEOUT", 
@@ -750,7 +364,7 @@ class ThreadSafeHospital:
                         f"[Thread: {threading.current_thread().name}] Allocated {device_name}"))
                     return True
             
-            time.sleep(0.1)  # Brief wait before retry
+            time.sleep(0.1)
         
         logger.warning(self._format_log_entry("DEVICE_TIMEOUT", 
             f"[Thread: {threading.current_thread().name}] Timeout waiting for {device_name}"))
@@ -773,11 +387,11 @@ class ThreadSafeHospital:
                 f"[Thread: {threading.current_thread().name}] Released {device_name}"))
             return True
 
-    def find_and_reserve_doctor_atomic(self, patient, specialty: str = None, department: str = None):
+    def find_and_reserve_doctor(self, patient, specialty: str = None, department: str = None):
         """
-        FIXED: Thread-safe atomic doctor finding and reservation.
+        Thread-safe atomic doctor finding and reservation.
         This method combines doctor finding and reservation into a single atomic operation
-        to prevent race conditions where multiple patients get assigned to the same doctor.
+        to prevent race conditions.
         
         Args:
             patient: The patient object that needs a doctor
@@ -791,7 +405,7 @@ class ThreadSafeHospital:
         thread_name = threading.current_thread().name
         
         while time.time() - start_time < self.timeout:
-            with self.doctors_lock:  # Global lock for doctor operations
+            with self.doctors_lock:
                 # Find potential doctors
                 potential_doctors = []
                 if department and department in self.departments:
@@ -821,11 +435,9 @@ class ThreadSafeHospital:
                                     return doctor
                     
                     # If we get here, all doctors became busy between our checks
-                    # This is normal concurrent behavior - just continue to retry
                     logger.debug(self._format_log_entry("DOCTOR_RACE_DETECTED", 
                         f"[Thread: {thread_name}] Doctors became busy during assignment, retrying..."))
             
-            # Wait before next attempt
             time.sleep(0.2)
         
         # Timeout reached
@@ -881,22 +493,7 @@ class ThreadSafeHospital:
             logger.error(self._format_log_entry("PAYMENT_ERROR", f"Bill {bill_id} not found"))
             return False
 
-    def simulate_patient_visit(self, patient) -> None:
-        """
-        Original simulate_patient_visit method for backward compatibility.
-        This is the non-threaded version that calls the threaded version internally.
-        
-        Args:
-            patient: The patient object to process.
-        """
-        # For backward compatibility, run the threaded version but wait for completion
-        visit_summary = self.simulate_patient_visit_threaded(patient)
-        
-        # Log backward compatibility usage
-        logger.info(self._format_log_entry("BACKWARD_COMPAT", 
-            f"Non-threaded simulate_patient_visit called for {patient.name} - redirected to threaded version"))
-
-    def simulate_patient_visit_threaded(self, patient) -> Dict[str, Any]:
+    def simulate_patient_visit(self, patient) -> Dict[str, Any]:
         """
         Thread-safe simulation of a complete patient visit.
         
@@ -931,35 +528,35 @@ class ThreadSafeHospital:
             visit_summary["stages_completed"].append("admission")
             
             # Stage 2: Triage
-            if self._simulate_triage_threaded(patient):
+            if self._simulate_triage(patient):
                 visit_summary["stages_completed"].append("triage")
             else:
                 visit_summary["errors"].append("Triage failed")
             
             # Stage 3: Registration
-            if self._simulate_registration_threaded(patient):
+            if self._simulate_registration(patient):
                 visit_summary["stages_completed"].append("registration")
             else:
                 visit_summary["errors"].append("Registration failed")
             
             # Stage 4: Consultation
-            needs_tests = self._simulate_consultation_threaded_fixed(patient)
+            needs_tests = self._simulate_consultation(patient)
             if needs_tests is not None:
                 visit_summary["stages_completed"].append("consultation")
                 
                 # Stage 5: Tests if needed
                 if needs_tests:
-                    test_cost = self._simulate_tests_threaded(patient, needs_tests)
+                    test_cost = self._simulate_tests(patient, needs_tests)
                     visit_summary["total_cost"] += test_cost
                     visit_summary["stages_completed"].append("tests")
                     
                     # Follow-up consultation
-                    if self._simulate_follow_up_consultation_threaded_fixed(patient):
+                    if self._simulate_follow_up_consultation(patient):
                         visit_summary["stages_completed"].append("follow_up")
             
             # Stage 6: Pharmacy if prescriptions
             if patient.medical_record.get("prescriptions"):
-                pharmacy_cost = self._simulate_pharmacy_threaded(patient)
+                pharmacy_cost = self._simulate_pharmacy(patient)
                 visit_summary["total_cost"] += pharmacy_cost
                 visit_summary["stages_completed"].append("pharmacy")
             
@@ -988,7 +585,7 @@ class ThreadSafeHospital:
             
             return visit_summary
 
-    def _simulate_triage_threaded(self, patient) -> bool:
+    def _simulate_triage(self, patient) -> bool:
         """Thread-safe triage simulation."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 1: Triage Assessment"))
@@ -1017,8 +614,8 @@ class ThreadSafeHospital:
                 priority = triage_result['priority']
                 initial_assessment = triage_result['initial_assessment']
                 vital_stats = triage_result['vital_stats']
-
                 assigned_department = triage_result['recommended_department']
+                
                 print(self._format_console_message("DEPARTMENT", 
                     f"[{thread_name}] Assigned to {assigned_department} department"))
                 
@@ -1044,9 +641,9 @@ class ThreadSafeHospital:
         
         finally:
             self.release_room("triage")
-            time.sleep(0.5)  # Brief processing time
+            time.sleep(0.5)
 
-    def _simulate_registration_threaded(self, patient) -> bool:
+    def _simulate_registration(self, patient) -> bool:
         """Thread-safe registration simulation."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 2: Registration"))
@@ -1074,11 +671,8 @@ class ThreadSafeHospital:
             self.release_room("registration")
             time.sleep(0.5)
 
-    def _simulate_consultation_threaded_fixed(self, patient):
-        """
-        FIXED: Thread-safe consultation simulation with atomic doctor assignment.
-        This version eliminates the race condition by using atomic doctor reservation.
-        """
+    def _simulate_consultation(self, patient):
+        """Thread-safe consultation simulation with atomic doctor assignment."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 3: Consultation"))
         
@@ -1088,11 +682,11 @@ class ThreadSafeHospital:
             wait_time = random.randint(1, 3) * patient.priority / 3
             print(self._format_console_message("WAIT", 
                 f"[{thread_name}] Waiting for doctor ({wait_time:.1f} min estimate)"))
-            time.sleep(min(wait_time, 1))  # Reduced sleep time for simulation
+            time.sleep(min(wait_time, 1))
             self.release_room("waiting")
         
-        # This combines finding and reserving into a single operation
-        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department)
+        # Atomic doctor assignment
+        doctor = self.find_and_reserve_doctor(patient, specialty=patient.assigned_department, department=patient.assigned_department)
         if not doctor:
             logger.error(self._format_log_entry("CONSULTATION_ERROR", 
                 f"[Thread: {thread_name}] No doctors available for {patient.name}"))
@@ -1102,24 +696,19 @@ class ThreadSafeHospital:
         
         # Allocate consultation room
         if not self.allocate_room("consultation"):
-            # Release the doctor since we couldn't get a room
             doctor.end_consultation()
             logger.error(self._format_log_entry("CONSULTATION_ERROR", 
                 f"[Thread: {thread_name}] No consultation rooms available"))
             return None
         
         try:
-            # Doctor is already reserved via atomic assignment
-            # No need to call start_consultation() again
-            
             with self.statistics_lock:
                 self.daily_statistics["consultations_completed"] += 1
             
             print(self._format_console_message("CONSULT", 
                 f"[{thread_name}] Consultation with Dr. {doctor.name} ({doctor.specialty})"))
             
-            # Simulate consultation
-            time.sleep(1)  # Reduced for simulation speed
+            time.sleep(1)
             
             # LLM consultation
             consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
@@ -1158,14 +747,13 @@ class ThreadSafeHospital:
                 logger.error(self._format_log_entry("CONSULTATION_JSON_ERROR", 
                     f"[Thread: {thread_name}] JSON decode error: {e}"))
             
-            # End consultation (releases the doctor)
             doctor.end_consultation()
             return needs_tests
         
         finally:
             self.release_room("consultation")
 
-    def _simulate_tests_threaded(self, patient, needs_tests) -> float:
+    def _simulate_tests(self, patient, needs_tests) -> float:
         """Thread-safe test simulation."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 4: Medical Tests"))
@@ -1175,9 +763,9 @@ class ThreadSafeHospital:
         for test_category, test_name in needs_tests:
             try:
                 if test_category == "Examination":
-                    cost = self._simulate_examination_threaded(patient, test_name)
+                    cost = self._simulate_examination(patient, test_name)
                 elif test_category == "Lab Test":
-                    cost = self._simulate_lab_test_threaded(patient, test_name)
+                    cost = self._simulate_lab_test(patient, test_name)
                 else:
                     cost = 0
                 
@@ -1192,7 +780,7 @@ class ThreadSafeHospital:
         
         return total_cost
 
-    def _simulate_examination_threaded(self, patient, test_name) -> float:
+    def _simulate_examination(self, patient, test_name) -> float:
         """Thread-safe examination simulation."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("TEST", f"[{thread_name}] Performing {test_name}"))
@@ -1203,11 +791,10 @@ class ThreadSafeHospital:
             return 0
         
         try:
-            # Try to allocate device
             device_allocated = self.allocate_device(test_name + " Machine")
             
             patient.update_status("Undergoing Examination")
-            time.sleep(1)  # Reduced for simulation
+            time.sleep(1)
             
             # LLM examination
             examination_prompt = TEST_EXAMINATION_PROMPT.format(
@@ -1247,7 +834,7 @@ class ThreadSafeHospital:
                 self.release_device(test_name + " Machine")
             self.release_room("examination")
 
-    def _simulate_lab_test_threaded(self, patient, test_name) -> float:
+    def _simulate_lab_test(self, patient, test_name) -> float:
         """Thread-safe lab test simulation."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("TEST", f"[{thread_name}] Processing {test_name}"))
@@ -1297,27 +884,23 @@ class ThreadSafeHospital:
         finally:
             self.release_room("lab")
 
-    def _simulate_follow_up_consultation_threaded_fixed(self, patient) -> bool:
-        """
-        FIXED: Thread-safe follow-up consultation with atomic doctor assignment.
-        """
+    def _simulate_follow_up_consultation(self, patient) -> bool:
+        """Thread-safe follow-up consultation with atomic doctor assignment."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 5: Follow-up Consultation"))
         
         # Use atomic doctor assignment
-        doctor = self.find_and_reserve_doctor_atomic(patient, specialty=patient.assigned_department, department=patient.assigned_department)
+        doctor = self.find_and_reserve_doctor(patient, specialty=patient.assigned_department, department=patient.assigned_department)
         if not doctor:
             logger.warning(self._format_log_entry("FOLLOWUP_FAILED", 
                 f"[Thread: {thread_name}] No doctor available for follow-up"))
             return False
         
         if not self.allocate_room("consultation"):
-            # Release doctor since we couldn't get a room
             doctor.end_consultation()
             return False
         
         try:
-            # Doctor is already reserved via atomic assignment
             print(self._format_console_message("REVIEW", 
                 f"[{thread_name}] Dr. {doctor.name} reviewing test results"))
             
@@ -1350,14 +933,13 @@ class ThreadSafeHospital:
                 logger.error(self._format_log_entry("FOLLOWUP_JSON_ERROR", 
                     f"[Thread: {thread_name}] JSON decode error: {e}"))
             
-            # End consultation (releases the doctor)
             doctor.end_consultation()
             return True
         
         finally:
             self.release_room("consultation")
 
-    def _simulate_pharmacy_threaded(self, patient) -> float:
+    def _simulate_pharmacy(self, patient) -> float:
         """Thread-safe pharmacy simulation."""
         thread_name = threading.current_thread().name
         print(self._format_console_message("STAGE", f"[{thread_name}] Stage 6: Pharmacy"))
@@ -1408,48 +990,72 @@ class ThreadSafeHospital:
         if max_workers is None:
             max_workers = self.max_concurrent_patients
         
+        # Mark simulation start for export system
+        self.export_system.simulation_start_time = datetime.now()
+        self.export_system.simulation_completed = False
+        
         logger.info(self._format_log_entry("CONCURRENT_START", 
             f"Starting concurrent processing of {len(patients)} patients with {max_workers} workers"))
         
-        visit_summaries = []
+        # Trigger initial export
+        self._trigger_export_update("simulation_start")
         
-        # Sort patients by priority (emergency patients first)
+        visit_summaries = []
         patients.sort(key=lambda p: p.priority)
         
-        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Patient") as executor:
-            # Submit all patient visits
-            future_to_patient = {
-                executor.submit(self.simulate_patient_visit_threaded, patient): patient 
-                for patient in patients
-            }
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_patient):
-                patient = future_to_patient[future]
-                try:
-                    visit_summary = future.result()
-                    visit_summaries.append(visit_summary)
-                    
-                    if visit_summary["success"]:
-                        logger.info(self._format_log_entry("PATIENT_COMPLETE", 
-                            f"Patient {patient.name} processed successfully in {visit_summary['duration_minutes']:.1f} min"))
-                    else:
-                        logger.warning(self._format_log_entry("PATIENT_FAILED", 
-                            f"Patient {patient.name} processing failed: {visit_summary['errors']}"))
+        try:
+            with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Patient") as executor:
+                future_to_patient = {
+                    executor.submit(self.simulate_patient_visit, patient): patient 
+                    for patient in patients
+                }
+                
+                for future in as_completed(future_to_patient):
+                    patient = future_to_patient[future]
+                    try:
+                        visit_summary = future.result()
+                        visit_summaries.append(visit_summary)
                         
-                except Exception as e:
-                    error_summary = {
-                        "patient_id": patient.id, "patient_name": patient.name,
-                        "success": False, "errors": [str(e)], "thread_id": "Unknown"
-                    }
-                    visit_summaries.append(error_summary)
-                    logger.error(self._format_log_entry("PATIENT_EXCEPTION", 
-                        f"Exception processing patient {patient.name}: {str(e)}"))
+                        if visit_summary["success"]:
+                            logger.info(self._format_log_entry("PATIENT_COMPLETE", 
+                                f"Patient {patient.name} processed successfully in {visit_summary['duration_minutes']:.1f} min"))
+                        else:
+                            logger.warning(self._format_log_entry("PATIENT_FAILED", 
+                                f"Patient {patient.name} processing failed: {visit_summary['errors']}"))
+                            
+                    except Exception as e:
+                        error_summary = {
+                            "patient_id": patient.id, "patient_name": patient.name,
+                            "success": False, "errors": [str(e)], "thread_id": "Unknown"
+                        }
+                        visit_summaries.append(error_summary)
+                        logger.error(self._format_log_entry("PATIENT_EXCEPTION", 
+                            f"Exception processing patient {patient.name}: {str(e)}"))
+        
+        finally:
+            # Finalize export system
+            self._finalize_simulation_with_export(visit_summaries)
         
         logger.info(self._format_log_entry("CONCURRENT_COMPLETE", 
             f"Concurrent processing completed - {len(visit_summaries)} patients processed"))
         
         return visit_summaries
+
+    def _finalize_simulation_with_export(self, visit_summaries: List[Dict[str, Any]]) -> None:
+        """Finalize simulation and ensure export system captures final state."""
+        logger.info(self._format_log_entry("SIMULATION_FINALIZATION", "Starting simulation finalization"))
+        
+        # Wait briefly for all operations to complete
+        time.sleep(0.5)
+        
+        # Gather final state
+        final_state = self._gather_current_state()
+        final_state["final_simulation_summary"] = self._generate_final_simulation_summary()
+        
+        # Finalize export system with final state
+        self.export_system.finalize_export(final_state)
+        
+        logger.info(self._format_log_entry("FINAL_EXPORT_SUCCESS", "Final export completed successfully"))
 
     def generate_hospital_statistics(self) -> Dict[str, Any]:
         """Generate comprehensive hospital statistics (thread-safe version)."""
@@ -1529,24 +1135,22 @@ class ThreadSafeHospital:
             return statistics
 
     def generate_concurrent_statistics(self, visit_summaries: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Generate statistics from concurrent patient processing."""
-        successful_visits = [v for v in visit_summaries if v.get("success", False)]
-        failed_visits = [v for v in visit_summaries if not v.get("success", False)]
+        """Generate statistics about concurrent processing."""
+        successful_visits = [v for v in visit_summaries if v["success"]]
+        failed_visits = [v for v in visit_summaries if not v["success"]]
         
-        # Calculate timing statistics
-        durations = [v.get("duration_minutes", 0) for v in successful_visits if v.get("duration_minutes")]
+        # Thread distribution analysis
+        thread_usage = {}
+        for visit in visit_summaries:
+            thread_id = visit.get("thread_id", "Unknown")
+            thread_usage[thread_id] = thread_usage.get(thread_id, 0) + 1
+        
+        # Duration analysis
+        durations = [v["duration_minutes"] for v in successful_visits if "duration_minutes" in v]
         avg_duration = sum(durations) / len(durations) if durations else 0
         
-        # Calculate cost statistics
-        total_costs = [v.get("total_cost", 0) for v in successful_visits]
-        total_revenue = sum(total_costs)
-        avg_cost_per_patient = total_revenue / len(successful_visits) if successful_visits else 0
-        
-        # Stage completion analysis
-        stage_completion = {}
-        for visit in visit_summaries:
-            for stage in visit.get("stages_completed", []):
-                stage_completion[stage] = stage_completion.get(stage, 0) + 1
+        # Cost analysis
+        total_revenue = sum(v.get("total_cost", 0) for v in successful_visits)
         
         return {
             "concurrent_metrics": {
@@ -1555,19 +1159,141 @@ class ThreadSafeHospital:
                 "failed_visits": len(failed_visits),
                 "success_rate": f"{(len(successful_visits) / len(visit_summaries) * 100):.1f}%" if visit_summaries else "0%",
                 "average_visit_duration_minutes": round(avg_duration, 2),
-                "total_revenue": f"${total_revenue:.2f}",
-                "average_cost_per_patient": f"${avg_cost_per_patient:.2f}"
-            },
-            "stage_completion_rates": {
-                stage: f"{(count / len(visit_summaries) * 100):.1f}%" 
-                for stage, count in stage_completion.items()
-            },
-            "threading_performance": {
-                "max_concurrent_patients": self.max_concurrent_patients,
-                "threads_used": len(set(v.get("thread_id", "Unknown") for v in visit_summaries)),
-                "resource_contention_events": len([log for log in self.resource_logs if "timeout" in log.get("action", "").lower()])
+                "total_revenue": total_revenue,
+                "threads_utilized": len(thread_usage),
+                "thread_distribution": thread_usage
             }
         }
+
+    def _gather_current_state(self) -> Dict[str, Any]:
+        """Gather current hospital state for export (thread-safe)."""
+        current_state = {}
+        
+        # Patient information
+        with self.patients_lock:
+            current_state["patients_processed"] = [
+                patient.get_medical_summary() for patient in self.patients.values()
+            ]
+            current_state["active_patients"] = {
+                pid: {
+                    "name": patient.name,
+                    "status": patient.status,
+                    "priority": patient.priority,
+                    "arrival_time": patient.arrival_time.isoformat(),
+                    "assigned_department": patient.assigned_department,
+                    "insurance": patient.insurance
+                }
+                for pid, patient in self.active_patients.items()
+            }
+        
+        # Hospital statistics
+        with self.statistics_lock:
+            current_state["hospital_statistics"] = self.generate_hospital_statistics()
+            current_state["daily_statistics"] = self.daily_statistics.copy()
+        
+        # Resource logs (keep last 50 for performance)
+        current_state["resource_logs"] = self.resource_logs[-50:]
+        current_state["patient_logs"] = self.patient_logs[-50:]
+        
+        # Financial information
+        with self.billing_lock:
+            current_state["billing_records"] = self.billing_records[-20:]
+            current_state["financial_summary"] = {
+                "total_revenue": self.revenue,
+                "total_expenses": self.expenses,
+                "profit": self.revenue - self.expenses,
+                "bills_count": len(self.billing_records)
+            }
+        
+        # Doctor statuses
+        with self.doctors_lock:
+            current_state["doctor_statuses"] = [
+                {
+                    "name": doctor.name,
+                    "specialty": doctor.specialty,
+                    "status": doctor.status,
+                    "patients_seen_today": doctor.patients_seen_today,
+                    "is_available": doctor.is_available()
+                }
+                for doctor in self.doctors
+            ]
+        
+        # Room utilization
+        with self.rooms_lock:
+            current_state["room_utilization"] = self.rooms.copy()
+        
+        current_state["snapshot_time"] = datetime.now().isoformat()
+        
+        return current_state
+
+    def _generate_final_simulation_summary(self) -> Dict[str, Any]:
+        """Generate final summary statistics that capture the complete simulation state."""
+        with self.statistics_lock, self.patients_lock, self.billing_lock:
+            total_patients = len(self.patients)
+            discharged_patients = len([p for p in self.patients.values() if p.discharge_time is not None])
+            
+            # Calculate average times
+            if discharged_patients > 0:
+                total_stay_times = [
+                    (p.discharge_time - p.arrival_time).total_seconds() / 3600
+                    for p in self.patients.values() 
+                    if p.discharge_time is not None
+                ]
+                avg_stay_time = sum(total_stay_times) / len(total_stay_times)
+            else:
+                avg_stay_time = 0
+            
+            # Final financial totals
+            total_bills_amount = sum(bill['amount'] for bill in self.billing_records)
+            paid_bills = [bill for bill in self.billing_records if bill['status'] == 'Paid']
+            total_paid_amount = sum(bill['amount'] for bill in paid_bills)
+            
+            return {
+                "total_patients_processed": total_patients,
+                "total_patients_discharged": discharged_patients,
+                "completion_rate": (discharged_patients / total_patients * 100) if total_patients > 0 else 0,
+                "average_stay_time_hours": round(avg_stay_time, 2),
+                "final_revenue": self.revenue,
+                "total_bills_amount": total_bills_amount,
+                "total_paid_amount": total_paid_amount,
+                "payment_completion_rate": (total_paid_amount / total_bills_amount * 100) if total_bills_amount > 0 else 0,
+                "simulation_duration_hours": (datetime.now() - self.operation_start_time).total_seconds() / 3600,
+                "final_active_patients": len(self.active_patients)
+            }
+
+    def _trigger_export_update(self, event_type: str) -> None:
+        """Trigger an export update through the export system."""
+        self.export_system.trigger_export_update(event_type, self._gather_current_state)
+
+    # Export system interface methods
+    def get_continuous_export_status(self) -> Dict[str, Any]:
+        """Get current status of continuous export system."""
+        return self.export_system.get_export_status()
+
+    def force_export_update(self) -> bool:
+        """Force an immediate export update."""
+        current_state = self._gather_current_state()
+        return self.export_system.force_export_update(current_state)
+
+    def force_final_export(self) -> bool:
+        """Force a final export."""
+        final_state = self._gather_current_state()
+        final_state["final_simulation_summary"] = self._generate_final_simulation_summary()
+        return self.export_system.force_final_export(final_state)
+
+    def cleanup_continuous_export(self) -> None:
+        """Clean up continuous export system."""
+        final_state = self._gather_current_state()
+        final_state["final_simulation_summary"] = self._generate_final_simulation_summary()
+        self.export_system.finalize_export(final_state)
+
+    def get_export_completion_status(self) -> Dict[str, Any]:
+        """Get export completion status."""
+        return self.export_system.get_export_completion_status()
+
+    def verify_final_export_integrity(self) -> Dict[str, Any]:
+        """Verify final export integrity."""
+        return self.export_system.verify_export_integrity()
 
     def _format_log_entry(self, event_type: str, message: str) -> str:
         """Format log entry with hospital ID."""
@@ -1576,10 +1302,6 @@ class ThreadSafeHospital:
     def _format_console_header(self) -> str:
         """Format console header for major sections."""
         return "\n" + "="*80 + "\n"
-
-    def _format_console_separator(self) -> str:
-        """Format console separator for sections."""
-        return "\n" + "-"*50
 
     def _format_console_message(self, event_type: str, message: str) -> str:
         """Format console message with timestamp and type."""
@@ -1596,5 +1318,12 @@ class ThreadSafeHospital:
         return (f"ThreadSafeHospital(id='{self.id}', name='{self.name}', "
                 f"doctors={len(self.doctors)}, departments={len(self.departments)})")
 
-# For backward compatibility, alias the new class
-Hospital = ThreadSafeHospital
+    def __del__(self):
+        """Cleanup when hospital object is destroyed."""
+        try:
+            if hasattr(self, 'export_system'):
+                final_state = self._gather_current_state()
+                final_state["final_simulation_summary"] = self._generate_final_simulation_summary()
+                self.export_system.finalize_export(final_state)
+        except:
+            pass
