@@ -89,9 +89,9 @@ hospital_data:
     - billing_records
   
   operation_hours:
-    start: 8
-    end: 22
-    duration: 14
+    start: 0
+    end: 23
+    duration: 23
 
   timeout: 360
   
