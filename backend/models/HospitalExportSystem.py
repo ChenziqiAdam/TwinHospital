@@ -261,16 +261,21 @@ class HospitalExportSystem:
         """
         logger.info("[EXPORT_SYSTEM] Starting export finalization")
         
-        # Stop the background export thread
+        # Ensure final export happens FIRST
+        if not self.final_export_completed:
+            logger.warning("[EXPORT_SYSTEM] Final export not completed - forcing final export")
+            self.force_final_export(current_state)
+        
+        # Add grace period for web page to fetch final data
+        logger.info("[EXPORT_SYSTEM] Grace period - allowing final data fetch...")
+        import time
+        time.sleep(3)  # 3 seconds grace period
+        
+        # Now stop the background export thread
         self.export_shutdown_event.set()
         if self.export_thread and self.export_thread.is_alive():
             self.export_thread.join(timeout=5)
             logger.info("[EXPORT_SYSTEM] Background export thread stopped")
-        
-        # Ensure final export happens
-        if not self.final_export_completed:
-            logger.warning("[EXPORT_SYSTEM] Final export not completed - forcing final export")
-            self.force_final_export(current_state)
         
         logger.info("[EXPORT_SYSTEM] Export finalization completed")
     
