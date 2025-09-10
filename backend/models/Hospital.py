@@ -1349,12 +1349,12 @@ class Hospital:
 
     def __str__(self) -> str:
         """String representation of the Hospital."""
-        return (f"ThreadSafeHospital('{self.name}' - {len(self.doctors)} doctors, "
+        return (f"Hospital('{self.name}' - {len(self.doctors)} doctors, "
                 f"{len(self.active_patients)} active patients)")
 
     def __repr__(self) -> str:
         """Detailed representation of the Hospital."""
-        return (f"ThreadSafeHospital(id='{self.id}', name='{self.name}', "
+        return (f"Hospital(id='{self.id}', name='{self.name}', "
                 f"doctors={len(self.doctors)}, departments={len(self.departments)})")
 
     def __del__(self):

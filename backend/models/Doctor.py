@@ -7,7 +7,7 @@ from ..config import get_config
 # Configure logger for Doctor class
 logger = logging.getLogger(__name__)
 
-class ThreadSafeDoctor:
+class Doctor:
     def __init__(self, name: str, specialty: str, staff_id: str = None, gender: str = None, age: str = None,
                  years_experience: int = 0, max_patients_per_day: int = 20):
         """
@@ -484,16 +484,13 @@ class ThreadSafeDoctor:
         return f"[{timestamp}] [{event_type}] {message}"
 
     def __str__(self) -> str:
-        """String representation of the ThreadSafeDoctor object."""
+        """String representation of the Doctor object."""
         with self.consultation_lock:
             return (f"Dr. {self.name} ({self.specialty}) - Status: {self.status} - "
                     f"Patients Today: {self.patients_seen_today}/{self.max_patients_per_day} [Thread-Safe]")
 
     def __repr__(self) -> str:
-        """Detailed representation of the ThreadSafeDoctor object."""
-        return (f"ThreadSafeDoctor(name='{self.name}', specialty='{self.specialty}', "
+        """Detailed representation of the Doctor object."""
+        return (f"Doctor(name='{self.name}', specialty='{self.specialty}', "
                 f"staff_id='{self.staff_id}', status='{self.status}', "
                 f"experience={self.years_experience})")
-
-# For backward compatibility
-Doctor = ThreadSafeDoctor

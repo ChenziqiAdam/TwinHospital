@@ -10,10 +10,10 @@ from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import our classes
-from backend.config import load_config, get_config
-from backend.models.Patient import Patient
-from backend.models.Doctor import Doctor
-from backend.models.Hospital import Hospital
+from .config import load_config, get_config
+from .models.Patient import Patient
+from .models.Doctor import Doctor
+from .models.Hospital import Hospital
 
 def setup_logging():
     """Setup comprehensive logging system with thread safety and continuous export."""

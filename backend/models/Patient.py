@@ -7,7 +7,7 @@ from ..config import get_config
 # Configure logger for Patient class
 logger = logging.getLogger(__name__)
 
-class ThreadSafePatient:
+class Patient:
     def __init__(self, patient_id: int, name: str, age: int = None, gender: str = None, 
                  contact: str = None, insurance: bool = True, symptoms: List = None, 
                  medical_history: List = None, assigned_department: str = None, consultation_history: List[Any] = None):
@@ -513,15 +513,12 @@ class ThreadSafePatient:
         return f"[{timestamp}] [{event_type}] {message}"
 
     def __str__(self) -> str:
-        """String representation of the ThreadSafePatient object."""
+        """String representation of the Patient object."""
         with self.status_lock:
             return (f"Patient(ID: {self.id}, Name: {self.name}, Status: {self.status}, "
                     f"Priority: {self.priority}({self.priority_description})) [Thread-Safe]")
 
     def __repr__(self) -> str:
-        """Detailed representation of the ThreadSafePatient object."""
-        return (f"ThreadSafePatient(id={self.id}, name='{self.name}', age={self.age}, "
+        """Detailed representation of the Patient object."""
+        return (f"Patient(id={self.id}, name='{self.name}', age={self.age}, "
                 f"gender='{self.gender}', status='{self.status}', priority={self.priority})")
-
-# For backward compatibility
-Patient = ThreadSafePatient

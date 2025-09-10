@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Real-Time Hospital Simulation - Twin Digital Medical Center</title>
+    <title>Hospital Simulation Game - Real-Time Dashboard</title>
     <style>
         * {
             margin: 0;
@@ -60,6 +60,11 @@
             background-color: #dc3545;
         }
         
+        .status-dot.completed {
+            background-color: #28a745;
+            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
+        }
+        
         @keyframes pulse {
             0% { opacity: 1; }
             50% { opacity: 0.5; }
@@ -70,6 +75,121 @@
             font-size: 0.8em;
             opacity: 0.9;
             margin-top: 5px;
+        }
+
+        /* Game Controls */
+        .game-controls {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .game-controls h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .control-panels {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .control-panel {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+        }
+
+        .control-panel h3 {
+            margin-bottom: 15px;
+            color: #fff;
+            font-size: 1em;
+        }
+
+        .control-panel label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+
+        .control-panel input[type="range"] {
+            width: 60%;
+            margin: 0 10px;
+        }
+
+        .display-value {
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .game-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-weight: 500;
+            cursor: pointer;
+            margin: 3px;
+            font-size: 0.9em;
+            transition: all 0.2s ease;
+        }
+
+        .start-btn {
+            background: #28a745;
+            color: white;
+        }
+
+        .start-btn:hover:not(:disabled) {
+            background: #218838;
+        }
+
+        .reset-btn {
+            background: #6c757d;
+            color: white;
+        }
+
+        .reset-btn:hover:not(:disabled) {
+            background: #545b62;
+        }
+
+        .game-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .game-progress {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 10px;
+            margin-top: 15px;
+            text-align: center;
+        }
+
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.9em;
+        }
+
+        .progress-bar-game {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill-game {
+            height: 100%;
+            background: linear-gradient(90deg, #28a745, #20c997);
+            transition: width 0.5s ease;
+            width: 0%;
         }
         
         .section {
@@ -341,70 +461,6 @@
             100% { transform: rotate(360deg); }
         }
         
-        .controls {
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            border: 1px solid #e9ecef;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-        
-        .control-group {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .status-dot.completed {
-            background-color: #28a745;
-            box-shadow: 0 0 0 2px rgba(40, 167, 69, 0.3);
-        }
-        
-        .btn {
-            padding: 6px 12px;
-            border: 1px solid #007bff;
-            background: #007bff;
-            color: white;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.9em;
-            transition: all 0.2s ease;
-        }
-        
-        .btn:hover {
-            background: #0056b3;
-        }
-        
-        .btn.btn-secondary {
-            background: #6c757d;
-            border-color: #6c757d;
-        }
-        
-        .btn.btn-secondary:hover {
-            background: #545b62;
-        }
-        
-        .progress-bar {
-            width: 100%;
-            height: 4px;
-            background-color: #e9ecef;
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: 10px;
-        }
-        
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #007bff, #28a745);
-            transition: width 0.5s ease;
-            border-radius: 2px;
-        }
-        
         .collapsible-btn {
             background: none;
             border: none;
@@ -429,7 +485,7 @@
         @media (max-width: 768px) {
             .container { padding: 10px; }
             .metric-grid { grid-template-columns: 1fr; }
-            .controls { flex-direction: column; align-items: stretch; }
+            .control-panels { grid-template-columns: 1fr; }
             .detail-grid { grid-template-columns: 1fr; }
         }
     </style>
@@ -439,51 +495,96 @@
         <!-- Header -->
         <div class="header">
             <div>
-                <h1 id="hospital-name">Twin Digital Medical Center</h1>
+                <h1 id="hospital-name">Hospital Simulation Game</h1>
                 <div class="last-update">
-                    Real-Time Hospital Monitoring System
+                    Interactive Real-Time Hospital Management System
                 </div>
             </div>
             <div class="real-time-indicator">
                 <div class="status-dot connected" id="connection-status"></div>
                 <div>
-                    <div id="status-text">Connected</div>
-                    <div class="last-update" id="last-update">Last Update: Loading...</div>
+                    <div id="status-text">Ready</div>
+                    <div class="last-update" id="last-update">Last Update: Not started</div>
                 </div>
             </div>
         </div>
 
-        <!-- Controls -->
-        <div class="controls">
-            <div class="control-group">
-                <label for="update-interval">Update Interval:</label>
-                <select id="update-interval">
-                    <option value="1">1 second</option>
-                    <option value="2">2 seconds</option>
-                    <option value="5" selected>5 seconds</option>
-                    <option value="10">10 seconds</option>
-                    <option value="30">30 seconds</option>
-                </select>
-                <button class="btn" id="toggle-auto-update">Pause Updates</button>
+        <!-- Game Controls -->
+        <div class="game-controls">
+            <h2>🎮 Hospital Simulation Game Controls</h2>
+            <div class="control-panels">
+                <div class="control-panel">
+                    <h3>👥 Patient Configuration</h3>
+                    <label>
+                        Number of Patients: 
+                        <input type="range" id="patient-count" min="5" max="50" value="20">
+                        <span class="display-value" id="patient-display">20</span>
+                    </label>
+                </div>
+                
+                <div class="control-panel">
+                    <h3>👨‍⚕️ Medical Staff</h3>
+                    <label>
+                        Total Doctors: 
+                        <input type="range" id="doctor-count" min="3" max="12" value="6">
+                        <span class="display-value" id="doctor-display">6</span>
+                    </label>
+                </div>
+                
+                <div class="control-panel">
+                    <h3>🎯 Simulation Control</h3>
+                    <button class="game-btn start-btn" id="start-btn" onclick="startGame()">
+                        🚀 Start New Simulation
+                    </button>
+                    <button class="game-btn reset-btn" onclick="resetGame()">
+                        🔄 Reset & Configure
+                    </button>
+                </div>
             </div>
-            <div class="control-group">
-                <button class="btn btn-secondary" onclick="refreshData()">Refresh Now</button>
-                <button class="btn btn-secondary" onclick="exportCurrentData()">Export Current Data</button>
+            
+            <div class="game-progress">
+                <div class="progress-info">
+                    <span>Progress: <span id="progress-text">0/0 patients</span></span>
+                    <span>Simulation Time: <span id="simulation-time">00:00</span></span>
+                </div>
+                <div class="progress-bar-game">
+                    <div class="progress-fill-game" id="progress-fill"></div>
+                </div>
             </div>
         </div>
 
         <!-- Executive Summary -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('summary')">
-                <h2>Executive Summary</h2>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progress-fill"></div>
-                </div>
+                <h2>📊 Executive Summary</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content" id="summary">
                 <div class="metric-grid" id="summary-metrics">
-                    <!-- Metrics will be populated by JavaScript -->
+                    <div class="metric-card">
+                        <div class="metric-value">0</div>
+                        <div class="metric-label">Patients Processed</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">0</div>
+                        <div class="metric-label">Currently Active</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">$0</div>
+                        <div class="metric-label">Total Revenue</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">0</div>
+                        <div class="metric-label">Consultations</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">0</div>
+                        <div class="metric-label">Tests Performed</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-value">0</div>
+                        <div class="metric-label">Prescriptions</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -491,7 +592,7 @@
         <!-- Financial Performance -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('financial')">
-                <h2>Financial Performance</h2>
+                <h2>💰 Financial Performance</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="financial">
@@ -508,16 +609,14 @@
                         <tbody id="financial-table">
                             <tr>
                                 <td colspan="4" class="loading">
-                                    <div class="spinner"></div>
-                                    Loading financial data...
+                                    Start simulation to see financial data
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
                 
-                <!-- Recent Billing Records -->
-                <h3>Recent Billing Records (Last 10)</h3>
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">Recent Billing Records (Last 10)</h3>
                 <div class="table-container">
                     <table class="data-table">
                         <thead>
@@ -533,8 +632,7 @@
                         <tbody id="billing-table">
                             <tr>
                                 <td colspan="6" class="loading">
-                                    <div class="spinner"></div>
-                                    Loading billing records...
+                                    Start simulation to see billing records
                                 </td>
                             </tr>
                         </tbody>
@@ -546,7 +644,7 @@
         <!-- Medical Staff Status -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('doctors')">
-                <h2>Medical Staff Status</h2>
+                <h2>👨‍⚕️ Medical Staff Status</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="doctors">
@@ -559,14 +657,13 @@
                                 <th>Status</th>
                                 <th>Patients Today</th>
                                 <th>Utilization</th>
-                                <th>Available</th>
+                                <th>Avg Consultation Time</th>
                             </tr>
                         </thead>
                         <tbody id="doctors-table">
                             <tr>
                                 <td colspan="6" class="loading">
-                                    <div class="spinner"></div>
-                                    Loading medical staff...
+                                    Start simulation to see medical staff status
                                 </td>
                             </tr>
                         </tbody>
@@ -578,7 +675,7 @@
         <!-- Resource Utilization -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('resources')">
-                <h2>Resource Utilization</h2>
+                <h2>🏥 Resource Utilization</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="resources">
@@ -590,14 +687,13 @@
                                 <th>Total</th>
                                 <th>Available</th>
                                 <th>Occupied</th>
-                                <th>Utilization %</th>
+                                <th>Utilization Rate</th>
                             </tr>
                         </thead>
                         <tbody id="resources-table">
                             <tr>
                                 <td colspan="5" class="loading">
-                                    <div class="spinner"></div>
-                                    Loading resources...
+                                    Start simulation to see resource utilization
                                 </td>
                             </tr>
                         </tbody>
@@ -609,14 +705,13 @@
         <!-- Processed Patients -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('patients')">
-                <h2>All Processed Patients (<span id="processed-patients-count">0</span>)</h2>
+                <h2>👤 Processed Patients (<span id="processed-patients-count">0</span>)</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="patients">
                 <div id="patients-container">
                     <div class="loading">
-                        <div class="spinner"></div>
-                        Loading patient records...
+                        Start simulation to see patient records
                     </div>
                 </div>
             </div>
@@ -625,14 +720,13 @@
         <!-- Recent Activity Log -->
         <div class="section">
             <div class="section-header" onclick="toggleSection('activity')">
-                <h2>Recent Activity (Last 10)</h2>
+                <h2>📋 Recent Activity (Live Feed)</h2>
                 <span class="toggle-icon">▼</span>
             </div>
             <div class="section-content collapsed" id="activity">
                 <div id="activity-log">
                     <div class="loading">
-                        <div class="spinner"></div>
-                        Loading recent activity...
+                        Start simulation to see activity logs
                     </div>
                 </div>
             </div>
@@ -641,200 +735,184 @@
         <!-- Error Display -->
         <div id="error-display" style="display: none;">
             <div class="error-message">
-                <strong>Connection Error:</strong> <span id="error-message"></span>
+                <strong>⚠️ Error:</strong> <span id="error-message"></span>
             </div>
         </div>
     </div>
 
     <script>
-        let currentData = null;
-        let lastUpdateTime = null;
-        let updateInterval = 1; // seconds
-        let autoUpdate = true;
-        let updateTimer = null;
-        let progressTimer = null;
+        let gameRunning = false;
+        let gameStartTime = null;
+        let gameTimer = null;
+        let monitoringTimer = null;
         let previousMetrics = {};
 
-        // Initialize the real-time monitor
-        function initRealTimeMonitor() {
-            setupEventListeners();
-            startAutoUpdate();
-            refreshData();
-        }
+        // Initialize controls
+        document.getElementById('patient-count').addEventListener('input', function() {
+            document.getElementById('patient-display').textContent = this.value;
+        });
 
-        function setupEventListeners() {
-            document.getElementById('update-interval').addEventListener('change', function() {
-                updateInterval = parseInt(this.value);
-                if (autoUpdate) {
-                    startAutoUpdate();
-                }
-            });
+        document.getElementById('doctor-count').addEventListener('input', function() {
+            document.getElementById('doctor-display').textContent = this.value;
+        });
 
-            document.getElementById('toggle-auto-update').addEventListener('click', function() {
-                autoUpdate = !autoUpdate;
-                if (autoUpdate) {
-                    this.textContent = 'Pause Updates';
-                    startAutoUpdate();
-                } else {
-                    this.textContent = 'Resume Updates';
-                    stopAutoUpdate();
-                }
-            });
-        }
-
-        function startAutoUpdate() {
-            stopAutoUpdate(); // Clear any existing timer
-            updateTimer = setInterval(refreshData, updateInterval * 1000);
-            startProgressBar();
-        }
-
-        function stopAutoUpdate() {
-            if (updateTimer) {
-                clearInterval(updateTimer);
-                updateTimer = null;
-            }
-            if (progressTimer) {
-                clearInterval(progressTimer);
-                progressTimer = null;
-            }
-        }
-
-        function startProgressBar() {
-            let progress = 0;
-            const progressBar = document.getElementById('progress-fill');
+        function startGame() {
+            const patientCount = document.getElementById('patient-count').value;
+            const doctorCount = document.getElementById('doctor-count').value;
             
-            if (progressTimer) clearInterval(progressTimer);
+            document.getElementById('start-btn').disabled = true;
+            document.getElementById('status-text').textContent = 'Starting...';
             
-            progressTimer = setInterval(() => {
-                progress += (100 / updateInterval);
-                if (progress >= 100) {
-                    progress = 0;
-                }
-                progressBar.style.width = progress + '%';
-            }, 1000);
-        }
-
-        function refreshData() {
-            fetch('/api/data?t=' + new Date().getTime())
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    return response.json();
+            fetch('/api/start-simulation', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    patient_count: patientCount,
+                    total_doctors: doctorCount
                 })
-                .then(data => {
-                    if (data.error) {
-                        throw new Error(data.error);
-                    }
-                    updateDisplay(data);
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    gameRunning = true;
+                    gameStartTime = new Date();
+                    document.getElementById('status-text').textContent = 'Running';
+                    document.getElementById('connection-status').className = 'status-dot connected';
                     
-                    // Check if simulation is completed
-                    const metadata = data.simulation_metadata || {};
-                    const isCompleted = metadata.simulation_completed || metadata.final_export_completed;
+                    startGameTimer();
+                    startMonitoring();
+                } else {
+                    showError('Failed to start simulation: ' + (data.message || 'Unknown error'));
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('status-text').textContent = 'Error';
+                }
+            })
+            .catch(error => {
+                showError('Connection error: ' + error.message);
+                document.getElementById('start-btn').disabled = false;
+                document.getElementById('status-text').textContent = 'Disconnected';
+                document.getElementById('connection-status').className = 'status-dot disconnected';
+            });
+        }
+
+        function resetGame() {
+            fetch('/api/reset-simulation', {method: 'POST'})
+                .then(() => {
+                    gameRunning = false;
+                    gameStartTime = null;
                     
-                    if (isCompleted) {
-                        updateConnectionStatus(true, 'completed');
-                        // Stop auto updates when simulation is complete
-                        if (autoUpdate) {
-                            autoUpdate = false;
-                            document.getElementById('toggle-auto-update').textContent = 'Simulation Complete';
-                            document.getElementById('toggle-auto-update').disabled = true;
-                            stopAutoUpdate();
-                        }
-                    } else {
-                        updateConnectionStatus(true);
-                    }
+                    if (gameTimer) clearInterval(gameTimer);
+                    if (monitoringTimer) clearInterval(monitoringTimer);
+                    
+                    document.getElementById('start-btn').disabled = false;
+                    document.getElementById('progress-fill').style.width = '0%';
+                    document.getElementById('progress-text').textContent = '0/0 patients';
+                    document.getElementById('simulation-time').textContent = '00:00';
+                    document.getElementById('status-text').textContent = 'Ready';
+                    document.getElementById('connection-status').className = 'status-dot connected';
+                    document.getElementById('last-update').textContent = 'Last Update: Reset complete';
+                    document.getElementById('processed-patients-count').textContent = '0';
+                    
+                    // Reset all displays
+                    resetDisplays();
                     hideError();
                 })
                 .catch(error => {
-                    console.error('Error fetching data:', error);
-                    
-                    // Check if we have previous data indicating completion
-                    if (currentData && currentData.simulation_metadata) {
-                        const metadata = currentData.simulation_metadata;
-                        const isCompleted = metadata.simulation_completed || metadata.final_export_completed;
-                        
-                        if (isCompleted) {
-                            updateConnectionStatus(true, 'completed');
-                            if (autoUpdate) {
-                                autoUpdate = false;
-                                document.getElementById('toggle-auto-update').textContent = 'Simulation Complete';
-                                document.getElementById('toggle-auto-update').disabled = true;
-                                stopAutoUpdate();
-                            }
-                            hideError();
-                            return; // Don't show error for completed simulations
-                        }
-                    }
-                    
-                    updateConnectionStatus(false);
-                    showError(error.message);
+                    showError('Reset failed: ' + error.message);
                 });
         }
 
-        function updateConnectionStatus(connected, status = null) {
-            const statusDot = document.getElementById('connection-status');
-            const statusText = document.getElementById('status-text');
+        function startGameTimer() {
+            if (gameTimer) clearInterval(gameTimer);
             
-            if (status === 'completed') {
-                statusDot.className = 'status-dot completed';
-                statusDot.style.backgroundColor = '#28a745'; // Green for completed
-                statusText.textContent = 'Simulation Complete';
-            } else if (connected) {
-                statusDot.className = 'status-dot connected';
-                statusText.textContent = 'Connected';
-            } else {
-                statusDot.className = 'status-dot disconnected';
-                statusText.textContent = 'Disconnected';
-            }
+            gameTimer = setInterval(() => {
+                if (!gameRunning || !gameStartTime) return;
+                
+                const elapsed = Math.floor((new Date() - gameStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60).toString().padStart(2, '0');
+                const seconds = (elapsed % 60).toString().padStart(2, '0');
+                
+                document.getElementById('simulation-time').textContent = `${minutes}:${seconds}`;
+            }, 1000);
         }
 
-        function updateDisplay(data) {
-            currentData = data;
-            lastUpdateTime = new Date();
+        function startMonitoring() {
+            if (monitoringTimer) clearInterval(monitoringTimer);
             
-            // Update metadata
-            const metadata = data.simulation_metadata || {};
-            const realTimeData = data.real_time_data || {};
+            monitoringTimer = setInterval(() => {
+                if (!gameRunning) return;
+                
+                fetch('/api/data?t=' + new Date().getTime())
+                    .then(response => {
+                        if (!response.ok) throw new Error('Server error');
+                        return response.json();
+                    })
+                    .then(data => {
+                        updateGameProgress(data.game_state || {});
+                        updateDashboard(data.real_time_data || {});
+                        
+                        document.getElementById('last-update').textContent = 
+                            'Last Update: ' + new Date().toLocaleTimeString();
+                        
+                        if (data.game_state && data.game_state.status === 'completed') {
+                            gameRunning = false;
+                            document.getElementById('status-text').textContent = 'Completed';
+                            document.getElementById('connection-status').className = 'status-dot completed';
+                            document.getElementById('start-btn').disabled = false;
+                            if (gameTimer) clearInterval(gameTimer);
+                            clearInterval(monitoringTimer);
+                        }
+                        
+                        hideError();
+                    })
+                    .catch(error => {
+                        showError('Monitoring error: ' + error.message);
+                        document.getElementById('connection-status').className = 'status-dot disconnected';
+                    });
+            }, 2000);
+        }
+
+        function updateGameProgress(gameState) {
+            const processed = gameState.patients_processed || 0;
+            const total = gameState.patients_total || 0;
             
-            document.getElementById('hospital-name').textContent = 
-                realTimeData.hospital_statistics?.hospital_info?.name || 'Hospital Simulation';
+            if (total > 0) {
+                const progress = (processed / total) * 100;
+                document.getElementById('progress-fill').style.width = progress + '%';
+            }
             
-            // Update all sections
+            document.getElementById('progress-text').textContent = `${processed}/${total} patients`;
+        }
+
+        function updateDashboard(realTimeData) {
             updateSummaryMetrics(realTimeData);
-            updateFinancialData(realTimeData);
             updateDoctorsTable(realTimeData);
             updateResourcesTable(realTimeData);
+            updateFinancialData(realTimeData);
             updateProcessedPatients(realTimeData.patients_processed || []);
             updateActivityLog(realTimeData.patient_logs || []);
-            
-            // Update last update time
-            document.getElementById('last-update').textContent = 
-                'Last Update: ' + lastUpdateTime.toLocaleTimeString();
         }
 
         function updateSummaryMetrics(realTimeData) {
             const stats = realTimeData.hospital_statistics?.patient_statistics || {};
             const financial = realTimeData.hospital_statistics?.financial_summary || {};
-            const operational = realTimeData.hospital_statistics?.operational_metrics || {};
             
             const metrics = [
-                { label: 'Patients Processed', value: stats.total_processed || 0, key: 'patients_processed' },
-                { label: 'Currently Active', value: stats.currently_active || 0, key: 'active_patients' },
+                { label: 'Patients Processed', value: stats.total_processed || 0, key: 'patients' },
+                { label: 'Currently Active', value: stats.currently_active || 0, key: 'active' },
                 { label: 'Total Revenue', value: financial.total_revenue || '$0', key: 'revenue' },
                 { label: 'Consultations', value: stats.consultations_completed || 0, key: 'consultations' },
                 { label: 'Tests Performed', value: stats.tests_performed || 0, key: 'tests' },
-                { label: 'Patient Satisfaction', value: operational.patient_satisfaction_score || 'N/A', key: 'satisfaction' }
+                { label: 'Prescriptions', value: stats.prescriptions_dispensed || 0, key: 'prescriptions' }
             ];
 
-            const metricsContainer = document.getElementById('summary-metrics');
-            metricsContainer.innerHTML = '';
+            const container = document.getElementById('summary-metrics');
+            container.innerHTML = '';
 
             metrics.forEach(metric => {
                 const card = document.createElement('div');
                 card.className = 'metric-card';
                 
-                // Check if value changed
                 if (previousMetrics[metric.key] !== undefined && 
                     previousMetrics[metric.key] !== metric.value) {
                     card.classList.add('updated');
@@ -845,53 +923,7 @@
                     <div class="metric-value">${metric.value}</div>
                     <div class="metric-label">${metric.label}</div>
                 `;
-                metricsContainer.appendChild(card);
-            });
-        }
-
-        function updateFinancialData(realTimeData) {
-            const financial = realTimeData.hospital_statistics?.financial_summary || {};
-            const billingRecords = realTimeData.billing_records || [];
-            
-            // Update financial summary table
-            const financialTable = document.getElementById('financial-table');
-            financialTable.innerHTML = `
-                <tr>
-                    <td>Total Revenue</td>
-                    <td>${financial.total_revenue || '$0'}</td>
-                    <td>${financial.bills_issued || 0}</td>
-                    <td>${financial.payment_rate || '0%'}</td>
-                </tr>
-                <tr>
-                    <td>Net Profit</td>
-                    <td>${financial.profit || '$0'}</td>
-                    <td colspan="2">Expenses: ${financial.total_expenses || 0}</td>
-                </tr>
-            `;
-            
-            // Update billing records table (last 10)
-            const billingTable = document.getElementById('billing-table');
-            const recentBills = billingRecords.slice(-10).reverse();
-            
-            if (recentBills.length === 0) {
-                billingTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #6c757d;">No billing records available</td></tr>';
-                return;
-            }
-            
-            billingTable.innerHTML = '';
-            recentBills.forEach(bill => {
-                const row = document.createElement('tr');
-                const statusClass = bill.status === 'Paid' ? 'status-available' : 'status-busy';
-                
-                row.innerHTML = `
-                    <td>${bill.bill_id?.substring(0, 8) || 'N/A'}</td>
-                    <td>${bill.patient_name || 'Unknown'}</td>
-                    <td>${bill.service || 'Unknown'}</td>
-                    <td>${bill.amount || 0}</td>
-                    <td><span class="status-badge ${statusClass}">${bill.status || 'Unknown'}</span></td>
-                    <td>${formatTime(bill.timestamp)}</td>
-                `;
-                billingTable.appendChild(row);
+                container.appendChild(card);
             });
         }
 
@@ -905,7 +937,6 @@
             }
             
             tbody.innerHTML = '';
-            
             doctors.forEach(doctor => {
                 const row = document.createElement('tr');
                 const statusClass = doctor.status === 'Available' ? 'status-available' : 'status-busy';
@@ -916,7 +947,7 @@
                     <td><span class="status-badge ${statusClass}">${doctor.status || 'Unknown'}</span></td>
                     <td>${doctor.patients_seen || 0}</td>
                     <td>${doctor.utilization || '0%'}</td>
-                    <td>${doctor.status === 'Available' ? 'Yes' : 'No'}</td>
+                    <td>${doctor.avg_consultation_time || 'N/A'}</td>
                 `;
                 tbody.appendChild(row);
             });
@@ -932,7 +963,6 @@
             }
             
             tbody.innerHTML = '';
-            
             Object.entries(rooms).forEach(([roomType, data]) => {
                 const row = document.createElement('tr');
                 const utilization = data.total > 0 ? ((data.occupied / data.total) * 100).toFixed(1) : 0;
@@ -942,9 +972,55 @@
                     <td>${data.total || 0}</td>
                     <td>${data.available || 0}</td>
                     <td>${data.occupied || 0}</td>
-                    <td>${utilization}%</td>
+                    <td>${data.utilization_rate || utilization + '%'}</td>
                 `;
                 tbody.appendChild(row);
+            });
+        }
+
+        function updateFinancialData(realTimeData) {
+            const financial = realTimeData.hospital_statistics?.financial_summary || {};
+            const billingRecords = realTimeData.billing_records || [];
+            
+            // Update financial summary
+            const financialTable = document.getElementById('financial-table');
+            financialTable.innerHTML = `
+                <tr>
+                    <td>Total Revenue</td>
+                    <td>${financial.total_revenue || '$0'}</td>
+                    <td>${financial.bills_issued || 0}</td>
+                    <td>${financial.payment_rate || '0%'}</td>
+                </tr>
+                <tr>
+                    <td>Net Profit</td>
+                    <td>${financial.profit || '$0'}</td>
+                    <td colspan="2">Expenses: ${financial.total_expenses || '$0'}</td>
+                </tr>
+            `;
+            
+            // Update billing records
+            const billingTable = document.getElementById('billing-table');
+            const recentBills = billingRecords.slice(-10).reverse();
+            
+            if (recentBills.length === 0) {
+                billingTable.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #6c757d;">No billing records available</td></tr>';
+                return;
+            }
+            
+            billingTable.innerHTML = '';
+            recentBills.forEach(bill => {
+                const row = document.createElement('tr');
+                const statusClass = bill.status === 'Paid' ? 'status-available' : 'status-busy';
+                
+                row.innerHTML = `
+                    <td>${(bill.bill_id || '').substring(0, 8) || 'N/A'}</td>
+                    <td>${bill.patient_name || 'Unknown'}</td>
+                    <td>${bill.service || 'Unknown'}</td>
+                    <td>$${bill.amount || 0}</td>
+                    <td><span class="status-badge ${statusClass}">${bill.status || 'Unknown'}</span></td>
+                    <td>${formatTime(bill.timestamp)}</td>
+                `;
+                billingTable.appendChild(row);
             });
         }
 
@@ -999,10 +1075,10 @@
                             <div class="detail-section">
                                 <h4>Diagnosis & Treatment</h4>
                                 <ul class="detail-list">
-                                    <li><strong>Diagnosis:</strong> ${diagnosis}</li>
-                                    <li><strong>Doctor:</strong> ${medicalRecord.diagnoses?.[0]?.doctor || 'Unknown'}</li>
+                                    <li><strong>Primary Diagnosis:</strong> ${diagnosis}</li>
+                                    <li><strong>Attending Doctor:</strong> ${medicalRecord.diagnoses?.[0]?.doctor || 'Unknown'}</li>
                                     <li><strong>Prescriptions:</strong> ${medicalRecord.prescriptions?.length || 0} items</li>
-                                    <li><strong>Tests:</strong> ${medicalRecord.tests?.length || 0} performed</li>
+                                    <li><strong>Tests Performed:</strong> ${medicalRecord.tests?.length || 0} tests</li>
                                 </ul>
                             </div>
                         </div>
@@ -1037,7 +1113,7 @@
                         ${medicalRecord.notes?.length > 0 ? `
                         <div class="detail-section">
                             <h4>Medical Notes (${medicalRecord.notes.length} notes)</h4>
-                            <button class="collapsible-btn" onclick="toggleDetails('notes${index}')">Show/Hide Notes Details</button>
+                            <button class="collapsible-btn" onclick="toggleDetails('notes${index}')">Show/Hide Notes</button>
                             <div class="hidden-details" id="notes${index}">
                                 <div class="notes-section">
                                     ${medicalRecord.notes.map(note => `
@@ -1066,26 +1142,44 @@
                 return;
             }
             
-            // Show last 10 activities
             const recentLogs = patientLogs.slice(-10).reverse();
-            
             container.innerHTML = '';
             
             recentLogs.forEach(log => {
                 const logItem = document.createElement('div');
-                logItem.className = 'log-entry';
                 logItem.style.cssText = 'background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 8px 10px; margin: 5px 0; font-size: 0.85em;';
                 
                 const eventColor = log.event === 'discharge' ? '#28a745' : '#007bff';
                 
                 logItem.innerHTML = `
-                    <div style="font-weight: bold; color: ${eventColor};">${log.event?.toUpperCase() || 'UNKNOWN'}</div>
+                    <div style="font-weight: bold; color: ${eventColor};">${(log.event || 'unknown').toUpperCase()}</div>
                     <div>${log.patient_name || 'Unknown'} (ID: ${log.patient_id || 'N/A'})</div>
                     <div style="color: #6c757d; font-size: 0.9em;">${formatTime(log.timestamp)}</div>
                     <div style="color: #6c757d; font-size: 0.8em;">Thread: ${log.thread_id || 'N/A'}</div>
                 `;
                 container.appendChild(logItem);
             });
+        }
+
+        function resetDisplays() {
+            // Reset summary metrics
+            const summaryContainer = document.getElementById('summary-metrics');
+            summaryContainer.innerHTML = `
+                <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">Patients Processed</div></div>
+                <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">Currently Active</div></div>
+                <div class="metric-card"><div class="metric-value">$0</div><div class="metric-label">Total Revenue</div></div>
+                <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">Consultations</div></div>
+                <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">Tests Performed</div></div>
+                <div class="metric-card"><div class="metric-value">0</div><div class="metric-label">Prescriptions</div></div>
+            `;
+            
+            // Reset tables
+            document.getElementById('financial-table').innerHTML = '<tr><td colspan="4" class="loading">Start simulation to see financial data</td></tr>';
+            document.getElementById('billing-table').innerHTML = '<tr><td colspan="6" class="loading">Start simulation to see billing records</td></tr>';
+            document.getElementById('doctors-table').innerHTML = '<tr><td colspan="6" class="loading">Start simulation to see medical staff status</td></tr>';
+            document.getElementById('resources-table').innerHTML = '<tr><td colspan="5" class="loading">Start simulation to see resource utilization</td></tr>';
+            document.getElementById('patients-container').innerHTML = '<div class="loading">Start simulation to see patient records</div>';
+            document.getElementById('activity-log').innerHTML = '<div class="loading">Start simulation to see activity logs</div>';
         }
 
         function toggleSection(sectionId) {
@@ -1096,11 +1190,11 @@
             if (content.classList.contains('collapsed')) {
                 content.classList.remove('collapsed');
                 header.classList.remove('collapsed');
-                icon.style.transform = 'rotate(0deg)';
+                icon.textContent = '▼';
             } else {
                 content.classList.add('collapsed');
                 header.classList.add('collapsed');
-                icon.style.transform = 'rotate(-90deg)';
+                icon.textContent = '▶';
             }
         }
 
@@ -1111,10 +1205,10 @@
             
             if (details.classList.contains('expanded')) {
                 details.classList.remove('expanded');
-                icon.style.transform = 'rotate(-90deg)';
+                icon.textContent = '▶';
             } else {
                 details.classList.add('expanded');
-                icon.style.transform = 'rotate(0deg)';
+                icon.textContent = '▼';
             }
         }
 
@@ -1127,17 +1221,9 @@
             }
         }
 
-        function updateConnectionStatus(connected) {
-            const statusDot = document.getElementById('connection-status');
-            const statusText = document.getElementById('status-text');
-            
-            if (connected) {
-                statusDot.className = 'status-dot connected';
-                statusText.textContent = 'Connected';
-            } else {
-                statusDot.className = 'status-dot disconnected';
-                statusText.textContent = 'Disconnected';
-            }
+        function formatTime(timestamp) {
+            if (!timestamp) return 'N/A';
+            return new Date(timestamp).toLocaleTimeString();
         }
 
         function showError(message) {
@@ -1148,30 +1234,6 @@
         function hideError() {
             document.getElementById('error-display').style.display = 'none';
         }
-
-        function formatTime(timestamp) {
-            if (!timestamp) return 'N/A';
-            return new Date(timestamp).toLocaleTimeString();
-        }
-
-        function exportCurrentData() {
-            if (!currentData) {
-                alert('No data available to export');
-                return;
-            }
-            
-            const dataStr = JSON.stringify(currentData, null, 2);
-            const dataBlob = new Blob([dataStr], { type: 'application/json' });
-            const url = URL.createObjectURL(dataBlob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `hospital_data_export_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
-            link.click();
-            URL.revokeObjectURL(url);
-        }
-
-        // Initialize when page loads
-        document.addEventListener('DOMContentLoaded', initRealTimeMonitor);
     </script>
 </body>
 </html>
