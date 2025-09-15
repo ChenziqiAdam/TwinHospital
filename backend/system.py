@@ -17,7 +17,8 @@ from .models.Hospital import Hospital
 
 def setup_logging():
     """Setup comprehensive logging system with thread safety and continuous export."""
-    log_dir = Path("logs")
+    project_root = Path(__file__).parent.parent    # Get the project root directory (2 levels up from the current file)
+    log_dir = project_root / "logs"
     log_dir.mkdir(exist_ok=True)
     
     # Create formatters with thread information
