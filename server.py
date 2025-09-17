@@ -11,6 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from backend.models.Hospital import Hospital
 from backend.system import generate_doctors_from_config, generate_random_patients, setup_logging, load_config
+from backend.config import get_config
 
 class GameServer(BaseHTTPRequestHandler):
     hospital = None
@@ -24,6 +25,8 @@ class GameServer(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.startswith('/api/data'):
             self.serve_game_data()
+        elif self.path.startswith('/api/config'):
+            self.serve_config_data()
         elif self.path == '/' or self.path == '/game.html':
             self.serve_html()
         else:
@@ -51,17 +54,70 @@ class GameServer(BaseHTTPRequestHandler):
         except FileNotFoundError:
             self.send_error(404, "Game HTML file not found")
 
+    def serve_config_data(self):
+        """Serve default configuration options for frontend initialization"""
+        try:
+            config = get_config()
+            
+            config_data = {
+                'specialties': config.get_specialties(),
+                'room_types': list(config.hospital_data.rooms.keys()),
+                'default_rooms': config.hospital_data.rooms,
+                'default_doctor_per_department': config.hospital_data.doctor_per_department,
+                'available_devices': config.hospital_data.devices,
+                'test_categories': list(config.hospital_data.tests.keys()),
+                'operation_hours': config.hospital_data.operation_hours
+            }
+            
+            self.send_json_response(config_data)
+        except Exception as e:
+            self.send_json_response({'error': str(e)})
+
     def start_simulation(self, post_data):
         try:
             params = json.loads(post_data.decode('utf-8'))
             
-            # Generate doctors and patients based on user input
-            doctors = generate_doctors_from_config()[:int(params.get('total_doctors', 6))]
-            patients = generate_random_patients(int(params.get('patient_count', 20)))
+            # Extract basic parameters
+            patient_count = int(params.get('patient_count', 20))
             
-            # Create new hospital
+            # Extract room configuration
+            rooms_config = params.get('rooms', {})
+            
+            # Extract doctor department configuration  
+            doctor_departments = params.get('doctor_departments', {})
+            
+            # Extract devices configuration
+            selected_devices = params.get('devices', [])
+            
+            # Extract operation hours
+            operation_hours = params.get('operation_hours', {})
+            
+            # Update config with custom values
+            config = get_config()
+            
+            # Update room configuration
+            if rooms_config:
+                config.hospital_data.rooms.update(rooms_config)
+            
+            # Update doctor per department
+            if doctor_departments:
+                config.hospital_data.doctor_per_department.update(doctor_departments)
+            
+            # Update devices
+            if selected_devices:
+                config.hospital_data.devices = selected_devices
+                
+            # Update operation hours  
+            if operation_hours:
+                config.hospital_data.operation_hours.update(operation_hours)
+            
+            # Generate doctors and patients with updated config
+            doctors = generate_doctors_from_config()
+            patients = generate_random_patients(patient_count)
+            
+            # Create new hospital with custom configuration
             GameServer.hospital = Hospital(
-                "Game Hospital", 
+                "Custom Game Hospital", 
                 doctors, 
                 continuous_export_enabled=False  # Disable file export for game mode
             )
@@ -69,18 +125,28 @@ class GameServer(BaseHTTPRequestHandler):
             GameServer.game_state.update({
                 'status': 'running',
                 'patients_total': len(patients),
-                'patients_processed': 0
+                'patients_processed': 0,
+                'custom_config': {
+                    'rooms': dict(config.hospital_data.rooms),
+                    'departments': dict(config.hospital_data.doctor_per_department),
+                    'devices_count': len(config.hospital_data.devices),
+                    'operation_hours': dict(config.hospital_data.operation_hours)
+                }
             })
             
             # Start simulation in background
             def run_simulation():
-                GameServer.hospital.process_patients_concurrently(patients, max_workers=4)
+                max_workers = min(4, sum(doctor_departments.values()) if doctor_departments else 4)
+                GameServer.hospital.process_patients_concurrently(patients, max_workers=max_workers)
                 GameServer.game_state['status'] = 'completed'
             
             GameServer.simulation_thread = threading.Thread(target=run_simulation, daemon=True)
             GameServer.simulation_thread.start()
             
-            self.send_json_response({'status': 'started'})
+            self.send_json_response({
+                'status': 'started',
+                'config_applied': GameServer.game_state['custom_config']
+            })
             
         except Exception as e:
             self.send_json_response({'status': 'error', 'message': str(e)})
@@ -142,10 +208,11 @@ def start_game_server(port=8000):
     load_config("default.yaml")
     
     server = HTTPServer(('localhost', port), GameServer)
-    print(f"🎮 Hospital Simulation Game Server running at:")
+    print(f"🎮 Enhanced Hospital Simulation Game Server running at:")
     print(f"   http://localhost:{port}")
     print(f"   http://localhost:{port}/game.html")
-    print("\nPress Ctrl+C to stop the server")
+    print("\nFeatures: Customizable rooms, departments, devices, and operation hours")
+    print("Press Ctrl+C to stop the server")
     
     try:
         server.serve_forever()
