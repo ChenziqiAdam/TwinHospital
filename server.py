@@ -23,12 +23,16 @@ class GameServer(BaseHTTPRequestHandler):
     }
 
     def do_GET(self):
-        if self.path.startswith('/api/data'):
+        if self.path.startswith('/api/game-data'):
             self.serve_game_data()
+        elif self.path.startswith('/api/report-data'):
+            self.serve_report_data()
         elif self.path.startswith('/api/config'):
             self.serve_config_data()
         elif self.path == '/' or self.path == '/game.html':
-            self.serve_html()
+            self.serve_html('game.html')
+        elif self.path == '/report.html':
+            self.serve_html('report.html')
         else:
             super().do_GET()
     
@@ -41,18 +45,21 @@ class GameServer(BaseHTTPRequestHandler):
         elif self.path == '/api/reset-simulation':
             self.reset_simulation()
 
-    def serve_html(self):
-        try:
-            html_path = Path(__file__).parent / 'frontend/game.html'
-            with open(html_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            self.send_response(200)
-            self.send_header('Content-Type', 'text/html')
+    def serve_html(self, filename='game.html'):
+        html_path = f"frontend/{filename}"
+        if not Path(html_path).is_file():
+            self.send_response(404)
             self.end_headers()
-            self.wfile.write(content.encode('utf-8'))
-        except FileNotFoundError:
-            self.send_error(404, "Game HTML file not found")
+            self.wfile.write(b"404 Not Found")
+            return
+        
+        with open(html_path, 'r', encoding='utf-8') as file:
+            html_content = file.read()
+        
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.end_headers()
+        self.wfile.write(html_content.encode('utf-8'))
 
     def serve_config_data(self):
         """Serve default configuration options for frontend initialization"""
@@ -167,6 +174,94 @@ class GameServer(BaseHTTPRequestHandler):
                 # Get current hospital state
                 current_state = GameServer.hospital._gather_current_state()
                 
+                # Transform data for visualization
+                visualization_data = {
+                    'patients_processed': [],
+                    'active_patients': {},
+                    'doctor_statuses': []
+                }
+                
+                # Process patients data
+                for patient_id, patient in GameServer.hospital.patients.items():
+                    if patient.discharge_time is not None:
+                        # Discharged patients
+                        visualization_data['patients_processed'].append({
+                            'patient_info': {
+                                'id': patient.id,
+                                'name': patient.name,
+                                'age': patient.age,
+                                'gender': patient.gender,
+                                'symptoms': patient.symptoms,
+                                'insurance': patient.insurance
+                            },
+                            'visit_info': {
+                                'current_status': patient.status,
+                                'arrival_time': patient.arrival_time.isoformat() if patient.arrival_time else None,
+                                'discharge_time': patient.discharge_time.isoformat() if patient.discharge_time else None
+                            }
+                        })
+                    else:
+                        # Active patients
+                        visualization_data['active_patients'][patient_id] = {
+                            'id': patient.id,
+                            'name': patient.name,
+                            'current_status': patient.status,
+                            'age': patient.age,
+                            'gender': patient.gender,
+                            'symptoms': patient.symptoms
+                        }
+                
+                # Process doctors data
+                for doctor in GameServer.hospital.doctors:
+                    visualization_data['doctor_statuses'].append({
+                        'name': doctor.name,
+                        'specialty': doctor.specialty,
+                        'status': doctor.status,
+                        'patients_seen': doctor.patients_seen_today,
+                        'utilization': f"{(doctor.patients_seen_today / doctor.max_patients_per_day * 100):.1f}%" if doctor.max_patients_per_day > 0 else "0%"
+                    })
+                
+                # Update processed count
+                processed = len(visualization_data['patients_processed'])
+                GameServer.game_state['patients_processed'] = processed
+                
+                # Check if completed
+                if (processed >= GameServer.game_state['patients_total'] and 
+                    GameServer.game_state['status'] == 'running'):
+                    GameServer.game_state['status'] = 'completed'
+                
+                response_data = {
+                    'game_state': GameServer.game_state,
+                    'real_time_data': visualization_data
+                }
+            except Exception as e:
+                response_data = {
+                    'game_state': GameServer.game_state,
+                    'real_time_data': {
+                        'patients_processed': [],
+                        'active_patients': {},
+                        'doctor_statuses': []
+                    },
+                    'error': str(e)
+                }
+        else:
+            response_data = {
+                'game_state': GameServer.game_state,
+                'real_time_data': {
+                    'patients_processed': [],
+                    'active_patients': {},
+                    'doctor_statuses': []
+                }
+            }
+        
+        self.send_json_response(response_data)
+
+    def serve_report_data(self):
+        if GameServer.hospital:
+            try:
+                # Get current hospital state
+                current_state = GameServer.hospital._gather_current_state()
+                
                 # Update processed count
                 processed = len([p for p in GameServer.hospital.patients.values() 
                                if p.discharge_time is not None])
@@ -208,16 +303,16 @@ def start_game_server(port=8000):
     load_config("default.yaml")
     
     server = HTTPServer(('localhost', port), GameServer)
-    print(f"🎮 Enhanced Hospital Simulation Game Server running at:")
+    print(f"🎮 Enhanced Hospital Activity Visualization Server running at:")
     print(f"   http://localhost:{port}")
     print(f"   http://localhost:{port}/game.html")
-    print("\nFeatures: Customizable rooms, departments, devices, and operation hours")
+    print("\nFeatures: Real-time clustered dot visualization of hospital activities")
     print("Press Ctrl+C to stop the server")
     
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\n👋 Game server stopped")
+        print("\n👋 Visualization server stopped")
         server.shutdown()
 
 if __name__ == "__main__":
