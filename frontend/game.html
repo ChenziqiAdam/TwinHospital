@@ -481,19 +481,19 @@
                 .attr("width", doctorWidth)
                 .attr("height", doctorHeight);
             
-            // Create force simulations
+            // Create force simulations with cluster-focused forces
             patientSimulation = d3.forceSimulation(patientNodes)
-                .force("charge", d3.forceManyBody().strength(-8))
-                .force("center", d3.forceCenter(patientWidth / 2, patientHeight / 2))
-                .force("collision", d3.forceCollide().radius(5))
+                .force("charge", d3.forceManyBody().strength(-2).distanceMax(50)) // Reduced strength and limited range
+                .force("collision", d3.forceCollide().radius(5).strength(0.3)) // Reduced collision strength
                 .force("cluster", forceCluster(patientNodes, patientClusterPositions, patientWidth, patientHeight))
+                .alphaDecay(0.1) // Slower cooling for more stable positioning
                 .on("tick", () => tickedPatients());
                 
             doctorSimulation = d3.forceSimulation(doctorNodes)
-                .force("charge", d3.forceManyBody().strength(-15))
-                .force("center", d3.forceCenter(doctorWidth / 2, doctorHeight / 2))
-                .force("collision", d3.forceCollide().radius(8))
+                .force("charge", d3.forceManyBody().strength(-3).distanceMax(60)) // Reduced strength and limited range
+                .force("collision", d3.forceCollide().radius(8).strength(0.3)) // Reduced collision strength
                 .force("cluster", forceCluster(doctorNodes, doctorClusterPositions, doctorWidth, doctorHeight))
+                .alphaDecay(0.1) // Slower cooling for more stable positioning
                 .on("tick", () => tickedDoctors());
             
             // Initialize with empty state and show all clusters
@@ -564,9 +564,10 @@
             });
         }
         
-        // Custom force for clustering
+        // Custom force for clustering with stronger attraction to cluster centers
         function forceCluster(nodes, clusterPositions, width, height) {
-            const strength = 0.4;
+            const strength = 0.8; // Increased strength
+            const maxDistance = 60; // Maximum distance from cluster center
             
             return function(alpha) {
                 nodes.forEach(d => {
@@ -574,8 +575,20 @@
                     if (cluster) {
                         const targetX = cluster.x * width;
                         const targetY = cluster.y * height;
-                        d.vx += (targetX - d.x) * strength * alpha;
-                        d.vy += (targetY - d.y) * strength * alpha;
+                        const dx = targetX - d.x;
+                        const dy = targetY - d.y;
+                        const distance = Math.sqrt(dx * dx + dy * dy);
+                        
+                        // Strong attraction to cluster center
+                        d.vx += dx * strength * alpha;
+                        d.vy += dy * strength * alpha;
+                        
+                        // If too far from center, pull back strongly
+                        if (distance > maxDistance) {
+                            const pullStrength = (distance - maxDistance) / distance;
+                            d.vx += dx * pullStrength * 0.3;
+                            d.vy += dy * pullStrength * 0.3;
+                        }
                     }
                 });
             };
@@ -583,14 +596,30 @@
         
         function tickedPatients() {
             patientSvg.selectAll(".entity-dot")
-                .attr("cx", d => d.x)
-                .attr("cy", d => d.y);
+                .attr("cx", d => {
+                    // Add slight damping
+                    d.vx *= 0.95;
+                    return d.x;
+                })
+                .attr("cy", d => {
+                    // Add slight damping
+                    d.vy *= 0.95;
+                    return d.y;
+                });
         }
         
         function tickedDoctors() {
             doctorSvg.selectAll(".entity-dot")
-                .attr("cx", d => d.x)
-                .attr("cy", d => d.y);
+                .attr("cx", d => {
+                    // Add slight damping
+                    d.vx *= 0.95;
+                    return d.x;
+                })
+                .attr("cy", d => {
+                    // Add slight damping
+                    d.vy *= 0.95;
+                    return d.y;
+                });
         }
         
         function updateVisualization(data) {
@@ -691,23 +720,41 @@
                     existing.activity = entity.activity;
                     existing.data = entity.data;
                 } else {
-                    // Add new node
+                    // Add new node positioned near its target cluster
+                    const cluster = entity.type === 'patient' 
+                        ? patientClusterPositions[entity.activity] 
+                        : doctorClusterPositions[entity.activity];
+                    
+                    let startX, startY;
+                    if (cluster) {
+                        const targetWidth = entity.type === 'patient' ? patientWidth : doctorWidth;
+                        const targetHeight = entity.type === 'patient' ? patientHeight : doctorHeight;
+                        startX = cluster.x * targetWidth + (Math.random() - 0.5) * 40;
+                        startY = cluster.y * targetHeight + (Math.random() - 0.5) * 40;
+                    } else {
+                        startX = Math.random() * width;
+                        startY = Math.random() * height;
+                    }
+                    
                     const newNode = {
                         id: entity.id,
                         type: entity.type,
                         name: entity.name,
                         activity: entity.activity,
                         data: entity.data,
-                        x: Math.random() * width,
-                        y: Math.random() * height
+                        x: startX,
+                        y: startY
                     };
                     nodes.push(newNode);
                 }
             });
             
-            // Update simulation
+            // Update simulation with gentler restart
             simulation.nodes(nodes);
-            simulation.alpha(0.3).restart();
+            if (entities.length > nodes.length - entities.length) {
+                // Only restart with low alpha if new nodes were added
+                simulation.alpha(0.1).restart();
+            }
         }
         
         function updateDots(svg, nodes, colors, type) {
@@ -921,8 +968,9 @@
             patientSvg.attr("width", patientWidth).attr("height", patientHeight);
             doctorSvg.attr("width", doctorWidth).attr("height", doctorHeight);
             
-            patientSimulation.force("center", d3.forceCenter(patientWidth / 2, patientHeight / 2));
-            doctorSimulation.force("center", d3.forceCenter(doctorWidth / 2, doctorHeight / 2));
+            // Update cluster forces with new dimensions
+            patientSimulation.force("cluster", forceCluster(patientNodes, patientClusterPositions, patientWidth, patientHeight));
+            doctorSimulation.force("cluster", forceCluster(doctorNodes, doctorClusterPositions, doctorWidth, doctorHeight));
             
             // Re-initialize cluster labels
             patientSvg.selectAll(".cluster-label, .percentage-label").remove();
