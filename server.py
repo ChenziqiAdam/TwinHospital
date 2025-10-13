@@ -421,6 +421,15 @@ class GameServer(BaseHTTPRequestHandler):
                 if (processed >= GameServer.game_state['patients_total'] and 
                     GameServer.game_state['status'] == 'running'):
                     GameServer.game_state['status'] = 'completed'
+
+                if 'hospital_statistics' in current_state and 'financial_summary' in current_state['hospital_statistics']:
+                    summary = current_state['hospital_statistics']['financial_summary']
+                    for key in ['total_revenue', 'total_expenses', 'profit']:
+                        if key in summary:
+                            try:
+                                summary[f'{key}_raw'] = float(summary[key].replace('$', '').replace(',', ''))
+                            except (ValueError, TypeError):
+                                summary[f'{key}_raw'] = 0
                 
                 response_data = {
                     'game_state': GameServer.game_state,
