@@ -104,16 +104,18 @@ class GameServer(BaseHTTPRequestHandler):
             self.wfile.write(b"patient.html template not found")
             return
 
+        # Generate timeline HTML
         config = get_config()
         all_statuses = config.get_patient_statuses()
         current_status = patient.status
-        completed_statuses = [record['from_status'] for record in patient.waiting_history]
+        completed_statuses = {record['from_status'] for record in patient.waiting_history}
+        if patient.discharge_time:
+            completed_statuses.add(current_status)
 
-        # Generate status tracker HTML
         status_tracker_html = ""
         for status in all_statuses:
             status_class = ""
-            if status == current_status:
+            if status == current_status and not patient.discharge_time:
                 status_class = "active"
             elif status in completed_statuses:
                 status_class = "completed"
@@ -124,44 +126,75 @@ class GameServer(BaseHTTPRequestHandler):
             </div>
             '''
 
-        # Generate medical record HTML
-        vitals_html = "<table><tr><th>Timestamp</th><th>Temperature</th><th>Blood Pressure</th><th>Heart Rate</th></tr>"
-        for vital in patient.medical_record['vitals']:
-            vitals_html += f"<tr><td>{vital['timestamp']}</td><td>{vital['temperature']}°C</td><td>{vital['blood_pressure']}</td><td>{vital['heart_rate']} bpm</td></tr>"
-        vitals_html += "</table>"
+        # Generate content for each panel
+        personal_info_html = f"""
+            <table>
+                <tr><th>Attribute</th><th>Value</th></tr>
+                <tr><td>Name</td><td>{patient.name}</td></tr>
+                <tr><td>Age</td><td>{patient.age}</td></tr>
+                <tr><td>Gender</td><td>{patient.gender}</td></tr>
+                <tr><td>Symptoms</td><td>{', '.join(patient.symptoms)}</td></tr>
+            </table>
+        """
 
-        diagnoses_html = "<table><tr><th>Timestamp</th><th>Diagnosis</th><th>Doctor</th></tr>"
-        for diagnosis in patient.medical_record['diagnoses']:
-            diagnoses_html += f"<tr><td>{diagnosis['timestamp']}</td><td>{diagnosis['diagnosis']}</td><td>{diagnosis['doctor']}</td></tr>"
-        diagnoses_html += "</table>"
-
-        prescriptions_html = "<table><tr><th>Timestamp</th><th>Medication</th><th>Prescribed by</th></tr>"
-        for prescription in patient.medical_record['prescriptions']:
-            prescriptions_html += f"<tr><td>{prescription['timestamp']}</td><td>{prescription['medication']}</td><td>{prescription['prescribed_by']}</td></tr>"
-        prescriptions_html += "</table>"
-
-        notes_html = ""
-        for note in patient.medical_record['notes']:
-            notes_html += f"<div class='note'><strong>{note['timestamp']}</strong><p>{note['content']}</p></div>"
-
-        # Generate financials HTML
         financials_html = "<table><tr><th>Bill ID</th><th>Service</th><th>Amount</th><th>Status</th></tr>"
-        for bill in GameServer.hospital.billing_records:
-            if bill['patient_id'] == patient.id:
+        patient_bills = [b for b in GameServer.hospital.billing_records if b['patient_id'] == patient.id]
+        if not patient_bills:
+            financials_html += "<tr><td colspan='4'>No billing records found.</td></tr>"
+        else:
+            for bill in patient_bills:
                 financials_html += f"<tr><td>{bill['bill_id']}</td><td>{bill['service']}</td><td>${bill['amount']}</td><td>{bill['status']}</td></tr>"
         financials_html += "</table>"
 
+        diagnosis_html = "<table><tr><th>Timestamp</th><th>Diagnosis</th><th>Doctor</th></tr>"
+        if not patient.medical_record['diagnoses']:
+            diagnosis_html += "<tr><td colspan='3'>No diagnoses recorded.</td></tr>"
+        else:
+            for diagnosis in patient.medical_record['diagnoses']:
+                diagnosis_html += f"<tr><td>{diagnosis['timestamp']}</td><td>{diagnosis['diagnosis']}</td><td>{diagnosis['doctor']}</td></tr>"
+        diagnosis_html += "</table>"
+
+        test_results_html = "<table><tr><th>Test Result</th></tr>"
+        if not patient.medical_record['tests']:
+            test_results_html += "<tr><td>No test results found.</td></tr>"
+        else:
+            for test in patient.medical_record['tests']:
+                test_results_html += f"<tr><td>{test}</td></tr>"
+        test_results_html += "</table>"
+
+        insurance_html = f"""
+            <table>
+                <tr><th>Status</th><td>{'Insurance verified' if patient.insurance else 'Not Insured'}</td></tr>
+            </table>
+        """
+
+        prescriptions_html = "<table><tr><th>Timestamp</th><th>Medication</th><th>Prescribed by</th></tr>"
+        if not patient.medical_record['prescriptions']:
+            prescriptions_html += "<tr><td colspan='3'>No prescriptions found.</td></tr>"
+        else:
+            for pres in patient.medical_record['prescriptions']:
+                prescriptions_html += f"<tr><td>{pres['timestamp']}</td><td>{pres['medication']}</td><td>{pres['prescribed_by']}</td></tr>"
+        prescriptions_html += "</table>"
+
+        vitals_html = "<table><tr><th>Timestamp</th><th>Temp</th><th>BP</th><th>Heart Rate</th></tr>"
+        if not patient.medical_record['vitals']:
+            vitals_html += "<tr><td colspan='4'>No vitals recorded.</td></tr>"
+        else:
+            for vital in patient.medical_record['vitals']:
+                vitals_html += f"<tr><td>{vital['timestamp']}</td><td>{vital['temperature']}°C</td><td>{vital['blood_pressure']}</td><td>{vital['heart_rate']} bpm</td></tr>"
+        vitals_html += "</table>"
+
         # Replace placeholders
-        html_content = html_template.replace("<h1>Welcome, John Doe</h1>", f"<h1>Welcome, {patient.name}</h1>")
-        html_content = html_content.replace("<p>Your Patient ID: 12345</p>", f"<p>Your Patient ID: {patient.id}</p>")
-        html_content = html_content.replace("<strong>Age:</strong> 35", f"<strong>Age:</strong> {patient.age}")
-        html_content = html_content.replace("<strong>Gender:</strong> Male", f"<strong>Gender:</strong> {patient.gender}")
-        html_content = html_content.replace("<!-- Status steps will be dynamically generated -->", status_tracker_html)
-        html_content = html_content.replace("<!-- Vitals content will be dynamically generated -->", vitals_html)
-        html_content = html_content.replace("<!-- Diagnoses content will be dynamically generated -->", diagnoses_html)
-        html_content = html_content.replace("<!-- Prescriptions content will be dynamically generated -->", prescriptions_html)
-        html_content = html_content.replace("<!-- Notes content will be dynamically generated -->", notes_html)
+        html_content = html_template.replace("<h1>Welcome, John Doe</h1>", f"<h1>{patient.name}</h1>")
+        html_content = html_content.replace("<p>ID: 12345</p>", f"<p>ID: {patient.id}</p>")
+        html_content = html_content.replace("<!-- Status tracker will be dynamically generated -->", status_tracker_html)
+        html_content = html_content.replace("<!-- Personal info content will be dynamically generated -->", personal_info_html)
         html_content = html_content.replace("<!-- Financials content will be dynamically generated -->", financials_html)
+        html_content = html_content.replace("<!-- Diagnosis content will be dynamically generated -->", diagnosis_html)
+        html_content = html_content.replace("<!-- Test results content will be dynamically generated -->", test_results_html)
+        html_content = html_content.replace("<!-- Insurance content will be dynamically generated -->", insurance_html)
+        html_content = html_content.replace("<!-- Prescriptions content will be dynamically generated -->", prescriptions_html)
+        html_content = html_content.replace("<!-- Vitals content will be dynamically generated -->", vitals_html)
 
         self.send_response(200)
         self.send_header('Content-Type', 'text/html')
