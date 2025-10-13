@@ -738,7 +738,7 @@ class Hospital:
                     diagnosis = consultation_result.get("diagnosis")
                     patient.add_diagnosis(diagnosis, doctor.name)
                     prescription = consultation_result.get("prescription")
-                    patient.medical_record["prescriptions"].append(prescription)
+                    patient.add_prescription(prescription, doctor.name)
                     
                     print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Diagnosed: {diagnosis}"))
                     print(self._format_console_message("PRESCRIPTION", f"[{thread_name}] Prescribed: {prescription}"))
@@ -924,7 +924,7 @@ class Hospital:
                 diagnosis = follow_up_result.get("diagnosis")
                 patient.add_diagnosis(diagnosis, doctor.name)
                 prescription = follow_up_result.get("prescription")
-                patient.medical_record["prescriptions"].append(prescription)
+                patient.add_prescription(prescription, doctor.name)
                 
                 print(self._format_console_message("DIAGNOSIS", f"[{thread_name}] Final diagnosis: {diagnosis}"))
                 print(self._format_console_message("TREATMENT", f"[{thread_name}] Treatment prescribed"))

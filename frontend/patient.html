@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Patient Journey</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f4f7f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2em;
+            color: #2c3e50;
+        }
+        .header p {
+            margin: 0;
+            font-size: 1em;
+            color: #7f8c8d;
+        }
+        .status-tracker {
+            display: flex;
+            justify-content: space-around;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        .status-step {
+            text-align: center;
+            flex: 1;
+            position: relative;
+        }
+        .status-step:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            top: 15px;
+            left: 50%;
+            width: 100%;
+            height: 2px;
+            background-color: #dee2e6;
+            z-index: -1;
+        }
+        .status-dot {
+            width: 30px;
+            height: 30px;
+            background-color: #fff;
+            border: 2px solid #dee2e6;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            transition: all 0.3s ease;
+        }
+        .status-label {
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .status-step.completed .status-dot {
+            background-color: #3498db;
+            border-color: #3498db;
+        }
+        .status-step.completed:after {
+            background-color: #3498db;
+        }
+        .status-step.active .status-dot {
+            background-color: #2ecc71;
+            border-color: #2ecc71;
+            transform: scale(1.2);
+        }
+        .medical-record {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            overflow: hidden;
+        }
+        .tabs {
+            display: flex;
+            background-color: #f8f9fa;
+        }
+        .tab-link {
+            padding: 15px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+        .tab-link:hover {
+            background-color: #f1f2f6;
+        }
+        .tab-link.active {
+            border-bottom-color: #3498db;
+            color: #2c3e50;
+        }
+        .tab-content {
+            display: none;
+            padding: 20px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+        }
+        tr:hover {
+            background-color: #f1f2f6;
+        }
+        .note {
+            padding: 15px;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .note:last-child {
+            border-bottom: none;
+        }
+        .note strong {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Welcome, John Doe</h1>
+                <p>Your Patient ID: 12345</p>
+            </div>
+            <div>
+                <p><strong>Age:</strong> 35</p>
+                <p><strong>Gender:</strong> Male</p>
+            </div>
+        </div>
+
+        <h2>Your Journey at Our Hospital</h2>
+        <div class="status-tracker">
+            <!-- Status steps will be dynamically generated -->
+        </div>
+
+        <h2>Your Electronic Medical Record</h2>
+        <div class="medical-record">
+            <div class="tabs">
+                <div class="tab-link active" onclick="openTab(event, 'vitals')">Vitals</div>
+                <div class="tab-link" onclick="openTab(event, 'diagnoses')">Diagnoses</div>
+                <div class="tab-link" onclick="openTab(event, 'prescriptions')">Prescriptions</div>
+                <div class="tab-link" onclick="openTab(event, 'notes')">Notes</div>
+                <div class="tab-link" onclick="openTab(event, 'financials')">Financials</div>
+            </div>
+
+            <div id="vitals" class="tab-content active">
+                <!-- Vitals content will be dynamically generated -->
+            </div>
+
+            <div id="diagnoses" class="tab-content">
+                <!-- Diagnoses content will be dynamically generated -->
+            </div>
+
+            <div id="prescriptions" class="tab-content">
+                <!-- Prescriptions content will be dynamically generated -->
+            </div>
+
+            <div id="notes" class="tab-content">
+                <!-- Notes content will be dynamically generated -->
+            </div>
+
+            <div id="financials" class="tab-content">
+                <!-- Financials content will be dynamically generated -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function openTab(evt, tabName) {
+            var i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tab-link");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            evt.currentTarget.className += " active";
+        }
+    </script>
+
+</body>
+</html>

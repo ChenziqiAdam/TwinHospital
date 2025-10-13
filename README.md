@@ -1,48 +1,53 @@
-# 医院数字孪生系统 (Hospital Digital Twin System)
+# Hospital Digital Twin System
 
-这个系统是医院运营的数字孪生模拟器，用于模拟真实医院的各项流程和资源调度。
+This system is a digital twin simulator for hospital operations, designed to simulate the various processes and resource scheduling of a real hospital.
 
-## 项目结构
+## Project Structure
 
-- `Patient.py`: 病人类，包含病人的属性和医疗记录
-- `Doctor.py`: 医生类，包含医生的专业和排班信息
-- `Hospital.py`: 医院类，模拟医院运作和资源管理
-- `main.py`: 主程序，运行模拟并展示结果
+- `server.py`: The main entry point for the application. It starts a web server to host the frontend and provide a REST API for the simulation.
+- `backend/system.py`: Contains the core logic for setting up and running the simulation.
+- `backend/models/Hospital.py`: The main hospital class, which simulates hospital operations and resource management.
+- `backend/models/Patient.py`: The patient class, containing patient attributes and medical records.
+- `backend/models/Doctor.py`: The doctor class, containing doctor's specialties and scheduling information.
+- `frontend/`: Contains the HTML, CSS, and JavaScript for the web-based user interface.
+- `default.yaml`: The configuration file for the simulation.
 
-## 功能特性
+## Features
 
-- 病人流程模拟 (从入院到出院)
-- 医生和医疗资源调度
-- 房间和设备管理
-- 医疗记录维护
-- 财务和账单处理
-- 资源利用率统计
+- **Patient Flow Simulation**: Simulates the entire patient journey from admission to discharge.
+- **Resource Scheduling**: Manages the scheduling of doctors and other medical resources.
+- **Room and Equipment Management**: Tracks the allocation and availability of rooms and medical equipment.
+- **Medical Record Maintenance**: Keeps a record of each patient's medical history, diagnoses, and treatments.
+- **Financial and Billing Processing**: Simulates the billing and payment process for medical services.
+- **Resource Utilization Statistics**: Generates statistics on the utilization of hospital resources.
+- **Real-time Visualization**: Provides a web-based interface to visualize the simulation in real-time.
 
-## 使用方法
+## Usage
 
-运行主程序来启动模拟:
+To start the simulation, run the following command:
 
 ```bash
-python main.py
+python server.py
 ```
 
-## MVP版本说明
+Then, open your web browser and navigate to `http://localhost:8000` to view the simulation.
 
-当前系统是最小可行产品(MVP)版本，包含以下核心功能:
+## MVP Version Description
 
-1. 基础的病人流程模拟
-2. 医生分配和排班
-3. 医院资源分配
-4. 医疗记录管理
-5. 简单的账单和财务跟踪
-6. 统计报告生成
+This is a Minimum Viable Product (MVP) version of the system, which includes the following core features:
 
-## 未来扩展计划
+1.  Basic patient flow simulation.
+2.  Doctor and resource allocation.
+3.  Medical record management.
+4.  Simple billing and financial tracking.
+5.  Generation of statistical reports.
+6.  A web-based user interface for real-time visualization.
 
-- 用户界面 (Web/桌面应用)
-- 更复杂的资源调度算法
-- 医疗设备和耗材管理
-- 员工排班系统
-- 实时监控和预警系统
-- 与医院现有系统集成的API
-- 预测分析和优化建议
+## Future Expansion Plans
+
+- More complex resource scheduling algorithms.
+- Management of medical equipment and consumables.
+- Employee scheduling system.
+- Real-time monitoring and warning system.
+- APIs for integration with existing hospital systems.
+- Predictive analysis and optimization recommendations.

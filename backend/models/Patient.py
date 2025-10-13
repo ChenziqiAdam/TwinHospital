@@ -404,7 +404,7 @@ class Patient:
             
             return True
 
-    def add_prescription_thread_safe(self, prescription: str, doctor_name: str) -> None:
+    def add_prescription(self, prescription: str, doctor_name: str) -> None:
         """Thread-safe prescription addition."""
         with self.medical_record_lock:
             thread_name = threading.current_thread().name
@@ -418,7 +418,7 @@ class Patient:
             }
             
             # Add to prescriptions list (backward compatibility)
-            self.medical_record["prescriptions"].append(prescription)
+            self.medical_record["prescriptions"].append(prescription_record)
             
             # Track operation
             operation_record = {

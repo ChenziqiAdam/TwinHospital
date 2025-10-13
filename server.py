@@ -3,6 +3,7 @@ import time
 import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+import urllib.parse
 import sys
 import os
 
@@ -29,10 +30,12 @@ class GameServer(BaseHTTPRequestHandler):
             self.serve_report_data()
         elif self.path.startswith('/api/config'):
             self.serve_config_data()
-        elif self.path == '/' or self.path == '/game.html':
+        elif self.path == '/game.html':
             self.serve_html('game.html')
-        elif self.path == '/report.html':
+        elif self.path == '/' or self.path == '/report.html':
             self.serve_html('report.html')
+        elif self.path.startswith('/patient.html'):
+            self.serve_patient_journey()
         else:
             super().do_GET()
     
@@ -60,6 +63,111 @@ class GameServer(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'text/html')
         self.end_headers()
         self.wfile.write(html_content.encode('utf-8'))
+
+    def serve_patient_journey(self):
+        query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        patient_id = query_components.get("patient_id", [None])[0]
+
+        if not patient_id:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"Patient ID is missing")
+            return
+
+        if not GameServer.hospital or not GameServer.hospital.patients:
+            self.send_response(503)
+            self.end_headers()
+            self.wfile.write(b"Simulation not running or no patients")
+            return
+
+        try:
+            patient_id = int(patient_id)
+            patient = GameServer.hospital.patients.get(patient_id)
+        except (ValueError, TypeError):
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"Invalid Patient ID")
+            return
+
+        if not patient:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(f"Patient with ID {patient_id} not found".encode('utf-8'))
+            return
+
+        try:
+            with open("frontend/patient.html", "r", encoding="utf-8") as f:
+                html_template = f.read()
+        except FileNotFoundError:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"patient.html template not found")
+            return
+
+        config = get_config()
+        all_statuses = config.get_patient_statuses()
+        current_status = patient.status
+        completed_statuses = [record['from_status'] for record in patient.waiting_history]
+
+        # Generate status tracker HTML
+        status_tracker_html = ""
+        for status in all_statuses:
+            status_class = ""
+            if status == current_status:
+                status_class = "active"
+            elif status in completed_statuses:
+                status_class = "completed"
+            status_tracker_html += f'''
+            <div class="status-step {status_class}">
+                <div class="status-dot"></div>
+                <div class="status-label">{status}</div>
+            </div>
+            '''
+
+        # Generate medical record HTML
+        vitals_html = "<table><tr><th>Timestamp</th><th>Temperature</th><th>Blood Pressure</th><th>Heart Rate</th></tr>"
+        for vital in patient.medical_record['vitals']:
+            vitals_html += f"<tr><td>{vital['timestamp']}</td><td>{vital['temperature']}°C</td><td>{vital['blood_pressure']}</td><td>{vital['heart_rate']} bpm</td></tr>"
+        vitals_html += "</table>"
+
+        diagnoses_html = "<table><tr><th>Timestamp</th><th>Diagnosis</th><th>Doctor</th></tr>"
+        for diagnosis in patient.medical_record['diagnoses']:
+            diagnoses_html += f"<tr><td>{diagnosis['timestamp']}</td><td>{diagnosis['diagnosis']}</td><td>{diagnosis['doctor']}</td></tr>"
+        diagnoses_html += "</table>"
+
+        prescriptions_html = "<table><tr><th>Timestamp</th><th>Medication</th><th>Prescribed by</th></tr>"
+        for prescription in patient.medical_record['prescriptions']:
+            prescriptions_html += f"<tr><td>{prescription['timestamp']}</td><td>{prescription['medication']}</td><td>{prescription['prescribed_by']}</td></tr>"
+        prescriptions_html += "</table>"
+
+        notes_html = ""
+        for note in patient.medical_record['notes']:
+            notes_html += f"<div class='note'><strong>{note['timestamp']}</strong><p>{note['content']}</p></div>"
+
+        # Generate financials HTML
+        financials_html = "<table><tr><th>Bill ID</th><th>Service</th><th>Amount</th><th>Status</th></tr>"
+        for bill in GameServer.hospital.billing_records:
+            if bill['patient_id'] == patient.id:
+                financials_html += f"<tr><td>{bill['bill_id']}</td><td>{bill['service']}</td><td>${bill['amount']}</td><td>{bill['status']}</td></tr>"
+        financials_html += "</table>"
+
+        # Replace placeholders
+        html_content = html_template.replace("<h1>Welcome, John Doe</h1>", f"<h1>Welcome, {patient.name}</h1>")
+        html_content = html_content.replace("<p>Your Patient ID: 12345</p>", f"<p>Your Patient ID: {patient.id}</p>")
+        html_content = html_content.replace("<strong>Age:</strong> 35", f"<strong>Age:</strong> {patient.age}")
+        html_content = html_content.replace("<strong>Gender:</strong> Male", f"<strong>Gender:</strong> {patient.gender}")
+        html_content = html_content.replace("<!-- Status steps will be dynamically generated -->", status_tracker_html)
+        html_content = html_content.replace("<!-- Vitals content will be dynamically generated -->", vitals_html)
+        html_content = html_content.replace("<!-- Diagnoses content will be dynamically generated -->", diagnoses_html)
+        html_content = html_content.replace("<!-- Prescriptions content will be dynamically generated -->", prescriptions_html)
+        html_content = html_content.replace("<!-- Notes content will be dynamically generated -->", notes_html)
+        html_content = html_content.replace("<!-- Financials content will be dynamically generated -->", financials_html)
+
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.end_headers()
+        self.wfile.write(html_content.encode('utf-8'))
+
 
     def serve_config_data(self):
         """Serve default configuration options for frontend initialization"""

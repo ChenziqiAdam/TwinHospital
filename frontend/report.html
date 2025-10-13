@@ -555,11 +555,12 @@
             const notes = medical_record.notes || [];
 
             const testsHTML = tests.map(t => `<li>${t}</li>`).join('');
-            const prescriptionsHTML = prescriptions.map(p => `<li>${p}</li>`).join('');
+            const prescriptionsHTML = prescriptions.map(p => `<li>${p.medication} (Prescribed by: ${p.prescribed_by})</li>`).join('');
             const notesHTML = notes.map(n => `<li><strong>${n.staff || 'Unknown'} (${n.type || 'Note'}):</strong> ${n.content || 'No content'}</li>`).join('');
 
             return `
                 <div class="details-container">
+                    <a href="/patient.html?patient_id=${patient_info.id}" target="_blank">View Full Journey</a>
                     <div class="details-grid">
                         <div class="detail-box">
                             <h4>📋 Visit Information</h4>
