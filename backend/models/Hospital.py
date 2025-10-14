@@ -976,44 +976,6 @@ class Hospital:
         finally:
             self.release_room("pharmacy")
 
-    def start_realtime_monitoring(self):
-        """Start real-time web monitoring for the hospital simulation."""
-        logger = logging.getLogger(__name__)
-
-        try:
-            from frontend.generate_html import generate_realtime_hospital_report
-            import os
-            
-            export_status = self.get_continuous_export_status()
-            project_root = Path(__file__).parent.parent.parent
-            export_filename = os.path.basename(export_status.get('export_file_path'))
-            export_path = str(project_root / "exports" / export_filename)
-            html_path = str(project_root / "exports" / "realtime_hospital_report.html")
-            
-            if not export_path or not os.path.exists(export_path):
-                logger.warning(f"Export file not found, skipping real-time monitoring. File path: {export_path}")
-                return None, None
-                
-            logger.info(f"Starting real-time monitoring for: {export_path}")
-            
-            # Generate real-time report
-            output_path, server = generate_realtime_hospital_report(
-                json_file_path=str(Path(export_path).resolve()),
-                # output_file_path=html_path,
-                update_interval=1,  # Update every 5 seconds
-                port=8000
-            )
-            
-            logger.info(f"Real-time monitoring available at: http://localhost:8000/{os.path.basename(output_path)}")
-            return output_path, server
-            
-        except ImportError:
-            logger.warning("Real-time monitoring module not available")
-            return None, None
-        except Exception as e:
-            logger.error(f"Failed to start real-time monitoring: {e}")
-            return None, None
-
     def process_patients_concurrently(self, patients: List, max_workers: int = None) -> List[Dict[str, Any]]:
         """
         Process multiple patients concurrently using ThreadPoolExecutor.
@@ -1040,7 +1002,6 @@ class Hospital:
         
         visit_summaries = []
         patients.sort(key=lambda p: p.priority)
-        self.start_realtime_monitoring()
         
         try:
             with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Patient") as executor:
