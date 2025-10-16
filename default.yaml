@@ -160,3 +160,12 @@ llm:
 monitoring:
   enabled: true                    # Enable/disable real-time export monitoring
   duration_seconds: 360             # Duration to monitor export file changes
+
+# Simulating ConsultationTime(lognormal distribution)
+  base_mean_minutes: 8.0        # consultation time for single symptom
+  per_symptom_increase: 0.12    # increase 12% for each additional symptom
+  sigma: 0.60                   # sigma for lognormal distribution
+  min_minutes: 3.0
+  max_minutes: 45.0
+  sim_speed_minutes_per_second: 60.0  # sim_speed of the simulation
+
