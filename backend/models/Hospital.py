@@ -705,6 +705,7 @@ class Hospital:
             with self.statistics_lock:
                 self.daily_statistics["consultations_completed"] += 1
             
+            patient.update_status("In Consultation")
             print(self._format_console_message("CONSULT", 
                 f"[{thread_name}] Consultation with Dr. {doctor.name} ({doctor.specialty})"))
             
