@@ -1,3 +1,4 @@
+import math
 import random
 import time
 import threading
@@ -704,12 +705,76 @@ class Hospital:
         try:
             with self.statistics_lock:
                 self.daily_statistics["consultations_completed"] += 1
-            
+
             patient.update_status("In Consultation")
+            
             print(self._format_console_message("CONSULT", 
                 f"[{thread_name}] Consultation with Dr. {doctor.name} ({doctor.specialty})"))
-            
-            time.sleep(1)
+
+            ##New consultation duration time
+
+            def _sample_consultation_duration_minutes_inner(symptom_count: int) -> float:
+                import math
+                cfg = getattr(self, "config", None)
+                base_mean = (cfg.get("consultation_time", {}).get("base_mean_minutes", 8.0) if cfg else 8.0)
+                per_symptom = (cfg.get("consultation_time", {}).get("per_symptom_increase", 0.12) if cfg else 0.12)
+                sigma = (cfg.get("consultation_time", {}).get("sigma", 0.60) if cfg else 0.60)
+                min_mins = (cfg.get("consultation_time", {}).get("min_minutes", 3.0) if cfg else 3.0)
+                max_mins = (cfg.get("consultation_time", {}).get("max_minutes", 45.0) if cfg else 45.0)
+
+                s = max(0, int(symptom_count))
+                mean_minutes = base_mean * (1.0 + per_symptom * max(0, s - 1))
+                mu = math.log(max(1e-6, mean_minutes)) - (sigma ** 2) / 2.0
+                sample = random.lognormvariate(mu, sigma)
+                return max(min_mins, min(sample, max_mins))
+
+            symptom_count = len(getattr(patient, "symptoms", []) or [])
+            cons_minutes = float(_sample_consultation_duration_minutes_inner(symptom_count))
+
+            # eliminate dependency on the external start&end time
+            start_dt = datetime.now()
+            end_dt = start_dt + timedelta(minutes=cons_minutes)
+
+            # Write to patient/doctor consultation history
+            try:
+                if hasattr(patient, "consultation_history"):
+                    patient.consultation_history.append({
+                        "type": "consultation",
+                        "doctor": doctor.name,
+                        "department": getattr(patient, "assigned_department", None),
+                        "symptom_count": symptom_count,
+                        "duration_minutes": round(cons_minutes, 2),
+                        "start_time": start_dt,
+                        "end_time": end_dt,
+                        "timestamp": ts
+                    })
+                if hasattr(doctor, "consultation_history"):
+                    doctor.consultation_history.append({
+                        "patient_id": patient.id,
+                        "patient_name": patient.name,
+                        "symptom_count": symptom_count,
+                        "duration_minutes": round(cons_minutes, 2),
+                        "start_time": start_dt,
+                        "end_time": end_dt,
+                        "timestamp": ts
+                    })
+            except Exception:
+                pass
+
+            # Daily statistics: Cumulative and average values
+            with self.statistics_lock:
+                dm = self.daily_statistics.setdefault("daily_metrics", {})
+                dm["total_consultation_minutes"] = dm.get("total_consultation_minutes", 0.0) + cons_minutes
+                dm["consultation_count"] = dm.get("consultation_count", 0) + 1
+                dm["average_consultation_time_minutes"] = dm["total_consultation_minutes"] / max(1, dm[
+                    "consultation_count"])
+
+            # Simulated sleep (time-scaled to avoid blocking)
+            sim_speed = (getattr(self, "config", None) or {}).get("consultation_time", {}).get(
+                "sim_speed_minutes_per_second", 60.0)
+            sleep_seconds = min(cons_minutes * 60.0 / float(sim_speed), 2.0)  # 上限 2 秒
+            time.sleep(max(0.0, sleep_seconds))
+
             
             # LLM consultation
             consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
@@ -977,6 +1042,44 @@ class Hospital:
         finally:
             self.release_room("pharmacy")
 
+    def start_realtime_monitoring(self):
+        """Start real-time web monitoring for the hospital simulation."""
+        logger = logging.getLogger(__name__)
+
+        try:
+            from frontend.generate_html import generate_realtime_hospital_report
+            import os
+            
+            export_status = self.get_continuous_export_status()
+            project_root = Path(__file__).parent.parent.parent
+            export_filename = os.path.basename(export_status.get('export_file_path'))
+            export_path = str(project_root / "exports" / export_filename)
+            html_path = str(project_root / "exports" / "realtime_hospital_report.html")
+            
+            if not export_path or not os.path.exists(export_path):
+                logger.warning(f"Export file not found, skipping real-time monitoring. File path: {export_path}")
+                return None, None
+                
+            logger.info(f"Starting real-time monitoring for: {export_path}")
+            
+            # Generate real-time report
+            output_path, server = generate_realtime_hospital_report(
+                json_file_path=str(Path(export_path).resolve()),
+                # output_file_path=html_path,
+                update_interval=1,  # Update every 5 seconds
+                port=8000
+            )
+            
+            logger.info(f"Real-time monitoring available at: http://localhost:8000/{os.path.basename(output_path)}")
+            return output_path, server
+            
+        except ImportError:
+            logger.warning("Real-time monitoring module not available")
+            return None, None
+        except Exception as e:
+            logger.error(f"Failed to start real-time monitoring: {e}")
+            return None, None
+
     def process_patients_concurrently(self, patients: List, max_workers: int = None) -> List[Dict[str, Any]]:
         """
         Process multiple patients concurrently using ThreadPoolExecutor.
@@ -1003,6 +1106,7 @@ class Hospital:
         
         visit_summaries = []
         patients.sort(key=lambda p: p.priority)
+        self.start_realtime_monitoring()
         
         try:
             with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Patient") as executor:
