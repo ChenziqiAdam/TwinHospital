@@ -171,37 +171,37 @@
     <div class="main-container">
         <div class="status-indicator">
             <div class="status-dot"></div>
-            <span id="status-text">Loading...</span>
+            <span id="status-text" data-i18n="loading">Loading...</span>
         </div>
 
-        <h1>Hospital Performance Dashboard</h1>
+        <h1 data-i18n="hospital_performance_dashboard">Hospital Performance Dashboard</h1>
 
         <!-- Configuration Section -->
         <div class="widget config-section">
             <div class="config-header" onclick="toggleConfig()">
-                <h2>Simulation Configuration</h2>
+                <h2 data-i18n="simulation_configuration">Simulation Configuration</h2>
                 <span id="config-toggle-icon">▼</span>
             </div>
             <div class="config-content" id="config-content">
                 <div class="tabs" id="config-tabs">
-                    <button class="tab-button active" onclick="switchConfigTab(event, 'basic')">Basic</button>
-                    <button class="tab-button" onclick="switchConfigTab(event, 'rooms')">Rooms</button>
-                    <button class="tab-button" onclick="switchConfigTab(event, 'staff')">Staff</button>
-                    <button class="tab-button" onclick="switchConfigTab(event, 'equipment')">Equipment</button>
-                    <button class="tab-button" onclick="switchConfigTab(event, 'schedule')">Schedule</button>
+                    <button class="tab-button active" onclick="switchConfigTab(event, 'basic')" data-i18n="basic">Basic</button>
+                    <button class="tab-button" onclick="switchConfigTab(event, 'rooms')" data-i18n="rooms">Rooms</button>
+                    <button class="tab-button" onclick="switchConfigTab(event, 'staff')" data-i18n="staff">Staff</button>
+                    <button class="tab-button" onclick="switchConfigTab(event, 'equipment')" data-i18n="equipment">Equipment</button>
+                    <button class="tab-button" onclick="switchConfigTab(event, 'schedule')" data-i18n="schedule">Schedule</button>
                 </div>
 
                 <div id="basic" class="tab-content active">
                     <div class="control-panels">
                         <div class="control-panel">
-                            <h3>Patient Load</h3>
-                            <label>Number of Patients: <input type="number" id="patient-count" value="20" min="1"></label>
+                            <h3 data-i18n="patient_load">Patient Load</h3>
+                            <label><span data-i18n="number_of_patients">Number of Patients:</span> <input type="number" id="patient-count" value="20" min="1"></label>
                         </div>
                         <div class="control-panel">
-                            <h3>Simulation Control</h3>
-                            <button class="game-btn start-btn" onclick="startGame()">🚀 Start Simulation</button>
-                            <button class="game-btn reset-btn" onclick="resetGame()">🔄 Reset Simulation</button>
-                            <button class="game-btn info-btn" onclick="window.location.href='/game.html'">🎮 Visualize</button>
+                            <h3 data-i18n="simulation_control">Simulation Control</h3>
+                            <button class="game-btn start-btn" onclick="startGame()"><span data-i18n="start_simulation">🚀 Start Simulation</span></button>
+                            <button class="game-btn reset-btn" onclick="resetGame()"><span data-i18n="reset_simulation">🔄 Reset Simulation</span></button>
+                            <button class="game-btn info-btn" onclick="window.location.href='/game.html'"><span data-i18n="visualize">🎮 Visualize</span></button>
                         </div>
                     </div>
                 </div>
@@ -214,29 +214,29 @@
 
         <!-- Main Content Tabs -->
         <div class="tabs" id="main-tabs">
-            <button class="tab-button active" onclick="switchTab(event, 'dashboard-tab')">Dashboard</button>
-            <button class="tab-button" onclick="switchTab(event, 'financials-tab')">Financials</button>
-            <button class="tab-button" onclick="switchTab(event, 'staff-tab')">Staff</button>
-            <button class="tab-button" onclick="switchTab(event, 'patients-tab')">Patients</button>
-            <button class="tab-button" onclick="switchTab(event, 'activity-tab')">Activity Log</button>
+            <button class="tab-button active" onclick="switchTab(event, 'dashboard-tab')" data-i18n="dashboard">Dashboard</button>
+            <button class="tab-button" onclick="switchTab(event, 'financials-tab')" data-i18n="financials_tab">Financials</button>
+            <button class="tab-button" onclick="switchTab(event, 'staff-tab')" data-i18n="staff">Staff</button>
+            <button class="tab-button" onclick="switchTab(event, 'patients-tab')" data-i18n="patients_tab">Patients</button>
+            <button class="tab-button" onclick="switchTab(event, 'activity-tab')" data-i18n="activity_log">Activity Log</button>
         </div>
 
         <div id="dashboard-tab" class="tab-content active">
             <div class="dashboard-grid">
                 <div class="widget kpi-widget">
                     <div class="kpi-value" id="kpi-patients-processed">0</div>
-                    <div class="kpi-label">Patients Processed</div>
+                    <div class="kpi-label" data-i18n="patients_processed">Patients Processed</div>
                 </div>
                 <div class="widget kpi-widget">
                     <div class="kpi-value" id="kpi-total-revenue">$0</div>
-                    <div class="kpi-label">Total Revenue</div>
+                    <div class="kpi-label" data-i18n="total_revenue">Total Revenue</div>
                 </div>
                 <div class="widget kpi-widget">
                     <div class="kpi-value" id="kpi-avg-wait-time">0m</div>
-                    <div class="kpi-label">Avg. Wait Time</div>
+                    <div class="kpi-label" data-i18n="avg_wait_time">Avg. Wait Time</div>
                 </div>
                 <div class="widget chart-widget">
-                    <h2>Financial Summary</h2>
+                    <h2 data-i18n="financial_summary">Financial Summary</h2>
                     <div class="chart-container">
                         <canvas id="financial-chart"></canvas>
                     </div>
@@ -246,19 +246,19 @@
 
         <div id="financials-tab" class="tab-content">
             <div class="widget">
-                <h2>Financial Details</h2>
+                <h2 data-i18n="financial_details">Financial Details</h2>
                 <div class="table-container">
                     <table id="financial-details-table">
-                        <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+                        <thead><tr><th data-i18n="metric">Metric</th><th data-i18n="value">Value</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
             </div>
             <div class="widget">
-                <h2>Recent Billing Records</h2>
+                <h2 data-i18n="recent_billing_records">Recent Billing Records</h2>
                 <div class="table-container">
                     <table id="billing-records-table">
-                        <thead><tr><th>Bill ID</th><th>Patient</th><th>Service</th><th>Amount</th><th>Status</th><th>Time</th></tr></thead>
+                        <thead><tr><th data-i18n="bill_id">Bill ID</th><th data-i18n="patient">Patient</th><th data-i18n="service">Service</th><th data-i18n="amount">Amount</th><th data-i18n="status">Status</th><th data-i18n="time">Time</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -267,10 +267,10 @@
 
         <div id="staff-tab" class="tab-content">
             <div class="widget">
-                <h2>Medical Staff Status</h2>
+                <h2 data-i18n="medical_staff_status">Medical Staff Status</h2>
                 <div class="table-container">
                     <table id="staff-table">
-                        <thead><tr><th>Doctor</th><th>Specialty</th><th>Status</th><th>Patients Seen</th><th>Utilization</th><th>Avg. Consultation Time</th></tr></thead>
+                        <thead><tr><th data-i18n="doctor">Doctor</th><th data-i18n="specialty">Specialty</th><th data-i18n="status">Status</th><th data-i18n="patients_seen">Patients Seen</th><th data-i18n="utilization">Utilization</th><th data-i18n="avg_consultation_time">Avg. Consultation Time</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
@@ -279,7 +279,7 @@
 
         <div id="patients-tab" class="tab-content">
             <div class="widget">
-                <h2>Processed Patients (<span id="processed-patients-count">0</span>)</h2>
+                <h2 data-i18n="processed_patients">Processed Patients (<span id="processed-patients-count">0</span>)</h2>
                 <div id="patients-container">
                     <!-- Patient cards will be inserted here -->
                 </div>
@@ -288,18 +288,135 @@
 
         <div id="activity-tab" class="tab-content">
             <div class="widget">
-                <h2>Recent Activity Log</h2>
+                <h2 data-i18n="recent_activity_log">Recent Activity Log</h2>
                 <div class="table-container">
                     <table id="activity-log-table">
-                        <thead><tr><th>Time</th><th>Event</th><th>Patient</th><th>Details</th></tr></thead>
+                        <thead><tr><th data-i18n="time">Time</th><th data-i18n="event">Event</th><th data-i18n="patient">Patient</th><th data-i18n="details">Details</th></tr></thead>
                         <tbody></tbody>
                     </table>
                 </div>
             </div>
         </div>
     </div>
+    <div class="language-switcher">
+        <button onclick="changeLanguage('en')" data-i18n="lang_en">English</button>
+        <button onclick="changeLanguage('zh')" data-i18n="lang_zh">Chinese</button>
+    </div>
 
     <script>
+        const translations = {
+          en: {
+            "hospital_performance_dashboard": "Hospital Performance Dashboard",
+            "loading": "Loading...",
+            "simulation_configuration": "Simulation Configuration",
+            "basic": "Basic",
+            "rooms": "Rooms",
+            "staff": "Staff",
+            "equipment": "Equipment",
+            "schedule": "Schedule",
+            "patient_load": "Patient Load",
+            "number_of_patients": "Number of Patients",
+            "simulation_control": "Simulation Control",
+            "start_simulation": "🚀 Start Simulation",
+            "reset_simulation": "🔄 Reset Simulation",
+            "visualize": "🎮 Visualize",
+            "dashboard": "Dashboard",
+            "financials_tab": "Financials",
+            "patients_tab": "Patients",
+            "activity_log": "Activity Log",
+            "patients_processed": "Patients Processed",
+            "total_revenue": "Total Revenue",
+            "avg_wait_time": "Avg. Wait Time",
+            "financial_summary": "Financial Summary",
+            "financial_details": "Financial Details",
+            "metric": "Metric",
+            "value": "Value",
+            "recent_billing_records": "Recent Billing Records",
+            "bill_id": "Bill ID",
+            "patient": "Patient",
+            "service": "Service",
+            "amount": "Amount",
+            "status": "Status",
+            "time": "Time",
+            "medical_staff_status": "Medical Staff Status",
+            "doctor": "Doctor",
+            "specialty": "Specialty",
+            "patients_seen": "Patients Seen",
+            "utilization": "Utilization",
+            "avg_consultation_time": "Avg. Consultation Time",
+            "processed_patients": "Processed Patients",
+            "recent_activity_log": "Recent Activity Log",
+            "event": "Event",
+            "details": "Details",
+            "ready": "Ready",
+            "running": "Running",
+            "completed": "Completed",
+            "lang_en": "English",
+            "lang_zh": "Chinese"
+          },
+          zh: {
+            "hospital_performance_dashboard": "医院绩效仪表板",
+            "loading": "加载中...",
+            "simulation_configuration": "模拟配置",
+            "basic": "基本",
+            "rooms": "房间",
+            "staff": "员工",
+            "equipment": "设备",
+            "schedule": "时间表",
+            "patient_load": "患者负荷",
+            "number_of_patients": "患者人数",
+            "simulation_control": "模拟控制",
+            "start_simulation": "🚀 开始模拟",
+            "reset_simulation": "🔄 重置模拟",
+            "visualize": "🎮 可视化",
+            "dashboard": "仪表板",
+            "financials_tab": "财务",
+            "patients_tab": "患者",
+            "activity_log": "活动日志",
+            "patients_processed": "已处理患者",
+            "total_revenue": "总收入",
+            "avg_wait_time": "平均等待时间",
+            "financial_summary": "财务摘要",
+            "financial_details": "财务详情",
+            "metric": "指标",
+            "value": "价值",
+            "recent_billing_records": "最近的计费记录",
+            "bill_id": "账单ID",
+            "patient": "患者",
+            "service": "服务",
+            "amount": "金额",
+            "status": "状态",
+            "time": "时间",
+            "medical_staff_status": "医务人员状态",
+            "doctor": "医生",
+            "specialty": "专业",
+            "patients_seen": "已看患者",
+            "utilization": "利用率",
+            "avg_consultation_time": "平均会诊时间",
+            "processed_patients": "已处理患者",
+            "recent_activity_log": "最近活动日志",
+            "event": "事件",
+            "details": "详情",
+            "ready": "准备好",
+            "running": "运行中",
+            "completed": "已完成",
+            "lang_en": "英文",
+            "lang_zh": "中文"
+          }
+        };
+
+        function changeLanguage(lang) {
+          document.documentElement.lang = lang;
+          document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (el.childNodes.length > 0 && el.childNodes[0].nodeType === Node.TEXT_NODE) {
+                el.childNodes[0].nodeValue = translations[lang][key];
+            } else {
+                el.innerHTML = translations[lang][key];
+            }
+          });
+        }
+
         let financialChart;
         let monitoringTimer = null;
         let defaultConfig = {};
@@ -420,11 +537,11 @@
             if (isConnected) {
                 dot.classList.add('connected');
                 dot.classList.remove('disconnected');
-                text.textContent = gameStatus.charAt(0).toUpperCase() + gameStatus.slice(1);
+                text.setAttribute('data-i18n', gameStatus);
             } else {
                 dot.classList.add('disconnected');
                 dot.classList.remove('connected');
-                text.textContent = 'Disconnected';
+                text.setAttribute('data-i18n', 'disconnected');
             }
         }
 
@@ -442,6 +559,8 @@
                     if (data.game_state.status === 'completed' && monitoringTimer) {
                         clearInterval(monitoringTimer);
                     }
+                    const lang = document.documentElement.lang || 'en';
+                    changeLanguage(lang);
                 })
                 .catch(error => {
                     console.error('Error fetching report data:', error);

@@ -4,304 +4,350 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My Patient Journey</title>
-    <style>
-        :root {
-            --primary-color: #3498db;
-            --secondary-color: #2ecc71;
-            --background-color: #f4f7f9;
-            --container-bg: #ffffff;
-            --text-color: #333;
-            --light-text-color: #7f8c8d;
-            --border-color: #e9ecef;
-            --shadow: 0 4px 15px rgba(0,0,0,0.08);
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: var(--background-color);
-            color: var(--text-color);
-            margin: 0;
-            padding: 20px;
-        }
-        .container {
-            width: 100%;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        /* Timeline Styles */
-        .status-tracker {
-            display: flex;
-            justify-content: space-around;
-            padding: 20px;
-            background: #fff;
-            border-radius: 8px;
-            margin-bottom: 40px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        }
-        .status-step {
-            text-align: center;
-            flex: 1;
-            position: relative;
-        }
-        .status-step:not(:last-child)::after {
-            content: '';
-            position: absolute;
-            top: 15px;
-            left: 50%;
-            width: 100%;
-            height: 2px;
-            background-color: #dee2e6;
-            z-index: -1;
-        }
-        .status-dot {
-            width: 30px;
-            height: 30px;
-            background-color: #fff;
-            border: 2px solid #dee2e6;
-            border-radius: 50%;
-            margin: 0 auto 10px;
-            transition: all 0.3s ease;
-            z-index: 1;
-            position: relative;
-        }
-        .status-label {
-            font-size: 0.9em;
-            color: #7f8c8d;
-        }
-        .status-step.completed .status-dot {
-            background-color: #3498db;
-            border-color: #3498db;
-        }
-        .status-step.completed::after {
-            background-color: #3498db;
-        }
-        .status-step.active .status-dot {
-            background-color: #2ecc71;
-            border-color: #2ecc71;
-            transform: scale(1.2);
-        }
-        /* Circular Menu Styles */
-        .journey-wrapper {
-            position: relative;
-            width: 600px;
-            height: 600px;
-            margin: 40px auto;
-        }
-        .central-hub {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            background: var(--container-bg);
-            border-radius: 50%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            box-shadow: var(--shadow);
-            border: 5px solid var(--primary-color);
-            z-index: 10;
-            padding: 20px;
-        }
-        .central-hub h1 {
-            font-size: 1.5em;
-            margin: 0 0 5px 0;
-            color: var(--primary-color);
-        }
-        .central-hub p {
-            margin: 0;
-            font-size: 0.9em;
-            color: var(--light-text-color);
-        }
-        .journey-node {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 100px;
-            height: 100px;
-            margin: -50px;
-            background: var(--container-bg);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: var(--shadow);
-            border: 2px solid var(--border-color);
-            font-weight: 500;
-            font-size: 0.9em;
-        }
-        .journey-node:hover {
-            transform: scale(1.1);
-            border-color: var(--secondary-color);
-            color: var(--secondary-color);
-        }
-        /* Detail Panel Styles */
-        .detail-panel {
-            display: none;
-            background: var(--container-bg);
-            border-radius: 8px;
-            box-shadow: var(--shadow);
-            margin-top: 20px;
-            overflow: hidden;
-            border: 1px solid var(--border-color);
-        }
-        .detail-panel.active {
-            display: block;
-        }
-        .detail-header {
-            background-color: #f8f9fa;
-            padding: 15px 20px;
-            border-bottom: 1px solid var(--border-color);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .detail-header h2 {
-            margin: 0;
-            font-size: 1.5em;
-            color: #2c3e50;
-        }
-        .close-btn {
-            cursor: pointer;
-            font-size: 1.5em;
-            color: var(--light-text-color);
-        }
-        .detail-content {
-            padding: 20px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th, td {
-            padding: 12px 15px;
-            text-align: left;
-            border-bottom: 1px solid var(--border-color);
-        }
-        th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-        }
-        tr:hover {
-            background-color: #f1f2f6;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h2>Your Journey at Our Hospital</h2>
-        <div class="status-tracker">
-            <!-- Status tracker will be dynamically generated -->
-        </div>
-
-        <div class="journey-wrapper" id="journey-wrapper">
-            <div class="central-hub">
-                <h1>Welcome, John Doe</h1>
-                <p>ID: 12345</p>
-            </div>
-            <!-- Journey nodes will be positioned by JS -->
-        </div>
-
-        <div id="detail-panels">
-            <div id="personal-info-panel" class="detail-panel">
-                <div class="detail-header"><h2>Personal Information</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Personal info content will be dynamically generated -->
-                </div>
-            </div>
-            <div id="financials-panel" class="detail-panel">
-                <div class="detail-header"><h2>Financials</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Financials content will be dynamically generated -->
-                </div>
-            </div>
-            <div id="diagnosis-panel" class="detail-panel">
-                <div class="detail-header"><h2>Electronic Diagnosis</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Diagnosis content will be dynamically generated -->
-                </div>
-            </div>
-            <div id="test-results-panel" class="detail-panel">
-                <div class="detail-header"><h2>Test Results</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Test results content will be dynamically generated -->
-                </div>
-            </div>
-            <div id="insurance-panel" class="detail-panel">
-                <div class="detail-header"><h2>Insurance</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Insurance content will be dynamically generated -->
-                </div>
-            </div>
-            <div id="prescriptions-panel" class="detail-panel">
-                <div class="detail-header"><h2>Prescriptions</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Prescriptions content will be dynamically generated -->
-                </div>
-            </div>
-            <div id="vitals-panel" class="detail-panel">
-                <div class="detail-header"><h2>Vitals</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
-                <div class="detail-content">
-                    <!-- Vitals content will be dynamically generated -->
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        const nodes = [
-            { id: 'personal-info', label: 'Personal Info' },
-            { id: 'financials', label: 'Financials' },
-            { id: 'diagnosis', label: 'Diagnosis' },
-            { id: 'test-results', label: 'Test Results' },
-            { id: 'insurance', label: 'Insurance' },
-            { id: 'prescriptions', label: 'Prescriptions' },
-            { id: 'vitals', label: 'Vitals' }
-        ];
-
-        function setupJourneyNodes() {
-            const wrapper = document.getElementById('journey-wrapper');
-            const radius = 250; // Radius of the circle
-            const numNodes = nodes.length;
-            const angleStep = (2 * Math.PI) / numNodes;
-
-            nodes.forEach((node, i) => {
-                const angle = i * angleStep - (Math.PI / 2); // Start from top
-                const x = Math.cos(angle) * radius;
-                const y = Math.sin(angle) * radius;
-
-                const nodeEl = document.createElement('div');
-                nodeEl.className = 'journey-node';
-                nodeEl.id = `node-${node.id}`;
-                nodeEl.textContent = node.label;
-                nodeEl.style.transform = `translate(${x}px, ${y}px)`;
-                
-                nodeEl.onclick = () => openPanel(node.id);
-
-                wrapper.appendChild(nodeEl);
-            });
-        }
-
-        function openPanel(nodeId) {
-            closeAllPanels();
-            const panel = document.getElementById(`${nodeId}-panel`);
-            if (panel) {
-                panel.classList.add('active');
+        <style>
+            :root {
+                --primary-color: #3498db;
+                --secondary-color: #2ecc71;
+                --background-color: #f4f7f9;
+                --container-bg: #ffffff;
+                --text-color: #333;
+                --light-text-color: #7f8c8d;
+                --border-color: #e9ecef;
+                --shadow: 0 4px 15px rgba(0,0,0,0.08);
             }
-        }
-
-        function closeAllPanels() {
-            const panels = document.querySelectorAll('.detail-panel');
-            panels.forEach(p => p.classList.remove('active'));
-        }
-
-        document.addEventListener('DOMContentLoaded', setupJourneyNodes);
-    </script>
-
-</body>
-</html>
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+                background-color: var(--background-color);
+                color: var(--text-color);
+                margin: 0;
+                padding: 20px;
+            }
+            .container {
+                width: 100%;
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+            /* Timeline Styles */
+            .status-tracker {
+                display: flex;
+                justify-content: space-around;
+                padding: 20px;
+                background: #fff;
+                border-radius: 8px;
+                margin-bottom: 40px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            }
+            .status-step {
+                text-align: center;
+                flex: 1;
+                position: relative;
+            }
+            .status-step:not(:last-child)::after {
+                content: '';
+                position: absolute;
+                top: 15px;
+                left: 50%;
+                width: 100%;
+                height: 2px;
+                background-color: #dee2e6;
+                z-index: -1;
+            }
+            .status-dot {
+                width: 30px;
+                height: 30px;
+                background-color: #fff;
+                border: 2px solid #dee2e6;
+                border-radius: 50%;
+                margin: 0 auto 10px;
+                transition: all 0.3s ease;
+                z-index: 1;
+                position: relative;
+            }
+            .status-label {
+                font-size: 0.9em;
+                color: #7f8c8d;
+            }
+            .status-step.completed .status-dot {
+                background-color: #3498db;
+                border-color: #3498db;
+            }
+            .status-step.completed::after {
+                background-color: #3498db;
+            }
+            .status-step.active .status-dot {
+                background-color: #2ecc71;
+                border-color: #2ecc71;
+                transform: scale(1.2);
+            }
+            /* Circular Menu Styles */
+            .journey-wrapper {
+                position: relative;
+                width: 600px;
+                height: 600px;
+                margin: 40px auto;
+            }
+            .central-hub {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                width: 200px;
+                height: 200px;
+                background: var(--container-bg);
+                border-radius: 50%;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                box-shadow: var(--shadow);
+                border: 5px solid var(--primary-color);
+                z-index: 10;
+                padding: 20px;
+            }
+            .central-hub h1 {
+                font-size: 1.5em;
+                margin: 0 0 5px 0;
+                color: var(--primary-color);
+            }
+            .central-hub p {
+                margin: 0;
+                font-size: 0.9em;
+                color: var(--light-text-color);
+            }
+            .journey-node {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                width: 100px;
+                height: 100px;
+                margin: -50px;
+                background: var(--container-bg);
+                border-radius: 50%;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                text-align: center;
+                cursor: pointer;
+                transition: all 0.3s ease;
+                box-shadow: var(--shadow);
+                border: 2px solid var(--border-color);
+                font-weight: 500;
+                font-size: 0.9em;
+            }
+            .journey-node:hover {
+                transform: scale(1.1);
+                border-color: var(--secondary-color);
+                color: var(--secondary-color);
+            }
+            /* Detail Panel Styles */
+            .detail-panel {
+                display: none;
+                background: var(--container-bg);
+                border-radius: 8px;
+                box-shadow: var(--shadow);
+                margin-top: 20px;
+                overflow: hidden;
+                border: 1px solid var(--border-color);
+            }
+            .detail-panel.active {
+                display: block;
+            }
+            .detail-header {
+                background-color: #f8f9fa;
+                padding: 15px 20px;
+                border-bottom: 1px solid var(--border-color);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+            .detail-header h2 {
+                margin: 0;
+                font-size: 1.5em;
+                color: #2c3e50;
+            }
+            .close-btn {
+                cursor: pointer;
+                font-size: 1.5em;
+                color: var(--light-text-color);
+            }
+            .detail-content {
+                padding: 20px;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            th, td {
+                padding: 12px 15px;
+                text-align: left;
+                border-bottom: 1px solid var(--border-color);
+            }
+            th {
+                background-color: #f8f9fa;
+                font-weight: 600;
+            }
+            tr:hover {
+                background-color: #f1f2f6;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h2 data-i18n="your_journey_at_our_hospital">Your Journey at Our Hospital</h2>
+            <div class="status-tracker">
+                <!-- Status tracker will be dynamically generated -->
+            </div>
+    
+            <div class="journey-wrapper" id="journey-wrapper">
+                <div class="central-hub">
+                    <h1 data-i18n="welcome">Welcome, John Doe</h1>
+                    <p>ID: 12345</p>
+                </div>
+                <!-- Journey nodes will be positioned by JS -->
+            </div>
+    
+            <div id="detail-panels">
+                <div id="personal-info-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="personal_information">Personal Information</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Personal info content will be dynamically generated -->
+                    </div>
+                </div>
+                <div id="financials-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="financials">Financials</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Financials content will be dynamically generated -->
+                    </div>
+                </div>
+                <div id="diagnosis-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="electronic_diagnosis">Electronic Diagnosis</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Diagnosis content will be dynamically generated -->
+                    </div>
+                </div>
+                <div id="test-results-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="test_results">Test Results</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Test results content will be dynamically generated -->
+                    </div>
+                </div>
+                <div id="insurance-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="insurance">Insurance</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Insurance content will be dynamically generated -->
+                    </div>
+                </div>
+                <div id="prescriptions-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="prescriptions">Prescriptions</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Prescriptions content will be dynamically generated -->
+                    </div>
+                </div>
+                <div id="vitals-panel" class="detail-panel">
+                    <div class="detail-header"><h2 data-i18n="vitals">Vitals</h2><span class="close-btn" onclick="closeAllPanels()">×</span></div>
+                    <div class="detail-content">
+                        <!-- Vitals content will be dynamically generated -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="language-switcher">
+            <button onclick="changeLanguage('en')" data-i18n="lang_en">English</button>
+            <button onclick="changeLanguage('zh')" data-i18n="lang_zh">Chinese</button>
+        </div>
+    
+        <script>
+            const translations = {
+              en: {
+                "your_journey_at_our_hospital": "Your Journey at Our Hospital",
+                "welcome": "Welcome",
+                "personal_information": "Personal Information",
+                "financials": "Financials",
+                "electronic_diagnosis": "Electronic Diagnosis",
+                "test_results": "Test Results",
+                "insurance": "Insurance",
+                "prescriptions": "Prescriptions",
+                "vitals": "Vitals",
+                "personal_info": "Personal Info",
+                "diagnosis": "Diagnosis",
+                "lang_en": "English",
+                "lang_zh": "Chinese"
+              },
+              zh: {
+                "your_journey_at_our_hospital": "您在我们医院的旅程",
+                "welcome": "欢迎",
+                "personal_information": "个人信息",
+                "financials": "财务",
+                "electronic_diagnosis": "电子诊断",
+                "test_results": "检查结果",
+                "insurance": "保险",
+                "prescriptions": "处方",
+                "vitals": "生命体征",
+                "personal_info": "个人信息",
+                "diagnosis": "诊断",
+                "lang_en": "英文",
+                "lang_zh": "中文"
+              }
+            };
+    
+            function changeLanguage(lang) {
+              document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.innerHTML = translations[lang][key];
+              });
+            }
+    
+            const nodes = [
+                { id: 'personal-info', label: 'Personal Info', i18n: 'personal_info' },
+                { id: 'financials', label: 'Financials', i18n: 'financials' },
+                { id: 'diagnosis', label: 'Diagnosis', i18n: 'diagnosis' },
+                { id: 'test-results', label: 'Test Results', i18n: 'test_results' },
+                { id: 'insurance', label: 'Insurance', i18n: 'insurance' },
+                { id: 'prescriptions', label: 'Prescriptions', i18n: 'prescriptions' },
+                { id: 'vitals', label: 'Vitals', i18n: 'vitals' }
+            ];
+    
+            function setupJourneyNodes() {
+                const wrapper = document.getElementById('journey-wrapper');
+                const radius = 250; // Radius of the circle
+                const numNodes = nodes.length;
+                const angleStep = (2 * Math.PI) / numNodes;
+    
+                nodes.forEach((node, i) => {
+                    const angle = i * angleStep - (Math.PI / 2); // Start from top
+                    const x = Math.cos(angle) * radius;
+                    const y = Math.sin(angle) * radius;
+    
+                    const nodeEl = document.createElement('div');
+                    nodeEl.className = 'journey-node';
+                    nodeEl.id = `node-${node.id}`;
+                    nodeEl.textContent = node.label;
+                    nodeEl.setAttribute('data-i18n', node.i18n);
+                    nodeEl.style.transform = `translate(${x}px, ${y}px)`;
+                    
+                    nodeEl.onclick = () => openPanel(node.id);
+    
+                    wrapper.appendChild(nodeEl);
+                });
+            }
+    
+            function openPanel(nodeId) {
+                closeAllPanels();
+                const panel = document.getElementById(`${nodeId}-panel`);
+                if (panel) {
+                    panel.classList.add('active');
+                }
+            }
+    
+            function closeAllPanels() {
+                const panels = document.querySelectorAll('.detail-panel');
+                panels.forEach(p => p.classList.remove('active'));
+            }
+    
+            document.addEventListener('DOMContentLoaded', setupJourneyNodes);
+        </script>
+    
+    </body>
+    </html>
+    

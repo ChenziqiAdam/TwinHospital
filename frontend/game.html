@@ -299,39 +299,39 @@
         <!-- Header -->
         <div class="header">
             <div class="time" id="current-time">5:03 AM</div>
-            <div class="hospital-name" id="hospital-name">Hospital Activity Monitor</div>
+            <div class="hospital-name" id="hospital-name" data-i18n="hospital_activity_monitor">Hospital Activity Monitor</div>
         </div>
         
         <!-- Status Indicator -->
         <div class="status-indicator">
             <div class="status-dot connected" id="connection-status"></div>
             <div>
-                <div id="status-text">Connected</div>
-                <div style="font-size: 0.8em; opacity: 0.7;" id="last-update">Last Update: Loading...</div>
+                <div id="status-text" data-i18n="connected">Connected</div>
+                <div style="font-size: 0.8em; opacity: 0.7;" id="last-update" data-i18n="last_update">Last Update: Loading...</div>
             </div>
         </div>
         
         <!-- Stats Overlay -->
         <div class="stats-overlay">
-            <h3>Live Statistics</h3>
+            <h3 data-i18n="live_statistics">Live Statistics</h3>
             <div class="stat-item">
-                <span>Total Patients:</span>
+                <span data-i18n="total_patients">Total Patients:</span>
                 <span class="stat-value" id="total-patients">0</span>
             </div>
             <div class="stat-item">
-                <span>Active Patients:</span>
+                <span data-i18n="active_patients">Active Patients:</span>
                 <span class="stat-value" id="active-patients">0</span>
             </div>
             <div class="stat-item">
-                <span>Discharged:</span>
+                <span data-i18n="discharged">Discharged:</span>
                 <span class="stat-value" id="discharged-patients">0</span>
             </div>
             <div class="stat-item">
-                <span>Available Doctors:</span>
+                <span data-i18n="available_doctors">Available Doctors:</span>
                 <span class="stat-value" id="available-doctors">0</span>
             </div>
             <div class="stat-item">
-                <span>Busy Doctors:</span>
+                <span data-i18n="busy_doctors">Busy Doctors:</span>
                 <span class="stat-value" id="busy-doctors">0</span>
             </div>
         </div>
@@ -339,17 +339,17 @@
         <!-- Simulation Config Panel -->
         <div class="simulation-config" id="config-panel">
             <div class="config-row">
-                <label>Patients:</label>
+                <label data-i18n="patients">Patients:</label>
                 <input type="number" id="patient-count" value="25" min="10" max="100">
             </div>
             <div class="config-row">
-                <label>Doctors:</label>
+                <label data-i18n="doctors">Doctors:</label>
                 <input type="number" id="doctor-count" value="8" min="2" max="20">
             </div>
             <div class="config-row">
-                <button class="btn primary" onclick="startSimulation()">🚀 Start Simulation</button>
-                <button class="btn" onclick="resetSimulation()">🔄 Reset</button>
-                <button class="btn" onclick="hideConfig()">❌ Close</button>
+                <button class="btn primary" onclick="startSimulation()"><span data-i18n="start_simulation">🚀 Start Simulation</span></button>
+                <button class="btn" onclick="resetSimulation()"><span data-i18n="reset">🔄 Reset</span></button>
+                <button class="btn" onclick="hideConfig()"><span data-i18n="close">❌ Close</span></button>
             </div>
         </div>
         
@@ -357,68 +357,167 @@
         <div class="visualization-area">
             <!-- Patient Section -->
             <div class="section">
-                <div class="section-title">Patient Flow</div>
-                <div class="section-subtitle" id="patient-subtitle">Journey through hospital care</div>
+                <div class="section-title" data-i18n="patient_flow">Patient Flow</div>
+                <div class="section-subtitle" id="patient-subtitle" data-i18n="journey_through_hospital_care">Journey through hospital care</div>
                 <svg id="patient-visualization"></svg>
             </div>
             
             <!-- Doctor Section -->
             <div class="section">
-                <div class="section-title">Medical Staff</div>
-                <div class="section-subtitle" id="doctor-subtitle">Doctor availability & workload</div>
+                <div class="section-title" data-i18n="medical_staff">Medical Staff</div>
+                <div class="section-subtitle" id="doctor-subtitle" data-i18n="doctor_availability_workload">Doctor availability & workload</div>
                 <svg id="doctor-visualization"></svg>
             </div>
         </div>
         
         <!-- Controls -->
         <div class="controls">
-            <button class="btn" onclick="window.location.href='/report.html'">📊 Dashboard</button>
-            <button class="btn" onclick="showConfig()">⚙️ Configure</button>
-            <button class="btn" onclick="togglePause()" id="pause-btn">⏸️ Pause</button>
-            <button class="btn" onclick="resetSimulation()">🔄 Reset</button>
+            <button class="btn" onclick="window.location.href='/report.html'"><span data-i18n="dashboard">📊 Dashboard</span></button>
+            <button class="btn" onclick="showConfig()"><span data-i18n="configure">⚙️ Configure</span></button>
+            <button class="btn" onclick="togglePause()" id="pause-btn"><span data-i18n="pause">⏸️ Pause</span></button>
+            <button class="btn" onclick="resetSimulation()"><span data-i18n="reset">🔄 Reset</span></button>
+            <div class="language-switcher">
+                <button class="btn" onclick="changeLanguage('en')" data-i18n="lang_en">English</button>
+                <button class="btn" onclick="changeLanguage('zh')" data-i18n="lang_zh">Chinese</button>
+            </div>
         </div>
         
         <!-- Legend -->
         <div class="legend">
-            <h3>Activity Legend</h3>
+            <h3 data-i18n="activity_legend">Activity Legend</h3>
             <div class="legend-section">
-                <h4>Patient States</h4>
+                <h4 data-i18n="patient_states">Patient States</h4>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #ffd700;"></div>
-                    <span>Waiting</span>
+                    <span data-i18n="waiting">Waiting</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #ff6b6b;"></div>
-                    <span>In Consultation</span>
+                    <span data-i18n="in_consultation">In Consultation</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #4ecdc4;"></div>
-                    <span>Testing</span>
+                    <span data-i18n="testing">Testing</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #45b7d1;"></div>
-                    <span>Discharged</span>
+                    <span data-i18n="discharged">Discharged</span>
                 </div>
             </div>
             <div class="legend-section">
-                <h4>Doctor States</h4>
+                <h4 data-i18n="doctor_states">Doctor States</h4>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #96ceb4;"></div>
-                    <span>Available</span>
+                    <span data-i18n="available">Available</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #feca57;"></div>
-                    <span>Busy</span>
+                    <span data-i18n="busy">Busy</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #dda0dd;"></div>
-                    <span>On Break</span>
+                    <span data-i18n="on_break">On Break</span>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
+        const translations = {
+          en: {
+            "hospital_activity_visualization": "Hospital Activity Visualization",
+            "hospital_activity_monitor": "Hospital Activity Monitor",
+            "connected": "Connected",
+            "last_update": "Last Update",
+            "live_statistics": "Live Statistics",
+            "total_patients": "Total Patients",
+            "active_patients": "Active Patients",
+            "discharged": "Discharged",
+            "available_doctors": "Available Doctors",
+            "busy_doctors": "Busy Doctors",
+            "patients": "Patients",
+            "doctors": "Doctors",
+            "start_simulation": "🚀 Start Simulation",
+            "reset": "🔄 Reset",
+            "close": "❌ Close",
+            "patient_flow": "Patient Flow",
+            "journey_through_hospital_care": "Journey through hospital care",
+            "medical_staff": "Medical Staff",
+            "doctor_availability_workload": "Doctor availability & workload",
+            "dashboard": "📊 Dashboard",
+            "configure": "⚙️ Configure",
+            "pause": "⏸️ Pause",
+            "resume": "▶️ Resume",
+            "activity_legend": "Activity Legend",
+            "patient_states": "Patient States",
+            "waiting": "Waiting",
+            "in_consultation": "In Consultation",
+            "testing": "Testing",
+            "doctor_states": "Doctor States",
+            "available": "Available",
+            "busy": "Busy",
+            "on_break": "On Break",
+            "disconnected": "Disconnected",
+            "simulation_complete": "Simulation Complete",
+            "running": "Running",
+            "completed": "Completed",
+            "lang_en": "English",
+            "lang_zh": "Chinese"
+          },
+          zh: {
+            "hospital_activity_visualization": "医院活动可视化",
+            "hospital_activity_monitor": "医院活动监控",
+            "connected": "已连接",
+            "last_update": "上次更新",
+            "live_statistics": "实时统计",
+            "total_patients": "总患者数",
+            "active_patients": "活动患者",
+            "discharged": "已出院",
+            "available_doctors": "可用医生",
+            "busy_doctors": "忙碌的医生",
+            "patients": "患者",
+            "doctors": "医生",
+            "start_simulation": "🚀 开始模拟",
+            "reset": "🔄 重置",
+            "close": "❌ 关闭",
+            "patient_flow": "患者流程",
+            "journey_through_hospital_care": "医院治疗之旅",
+            "medical_staff": "医务人员",
+            "doctor_availability_workload": "医生可用性和工作量",
+            "dashboard": "📊 仪表板",
+            "configure": "⚙️ 配置",
+            "pause": "⏸️ 暂停",
+            "resume": "▶️ 恢复",
+            "activity_legend": "活动图例",
+            "patient_states": "患者状态",
+            "waiting": "等候",
+            "in_consultation": "会诊中",
+            "testing": "检查中",
+            "doctor_states": "医生状态",
+            "available": "空闲",
+            "busy": "忙碌",
+            "on_break": "休息中",
+            "disconnected": "已断开",
+            "simulation_complete": "模拟完成",
+            "running": "运行中",
+            "completed": "已完成",
+            "lang_en": "英文",
+            "lang_zh": "中文"
+          }
+        };
+
+        function changeLanguage(lang) {
+          document.documentElement.lang = lang;
+          document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (el.childNodes.length > 0 && el.childNodes[0].nodeType === Node.TEXT_NODE) {
+                el.childNodes[0].nodeValue = translations[lang][key];
+            } else {
+                el.innerHTML = translations[lang][key];
+            }
+          });
+        }
+
         // Global variables
         let patientSimulation, doctorSimulation;
         let patientSvg, doctorSvg;
@@ -874,15 +973,17 @@
                 .then(response => response.json())
                 .then(data => {
                     updateVisualization(data.real_time_data || {});
-                    updateConnectionStatus(true);
+                    updateConnectionStatus(true, data.game_state?.status);
                     
                     if (data.game_state?.status === 'completed') {
                         document.getElementById('connection-status').className = 'status-dot completed';
-                        document.getElementById('status-text').textContent = 'Simulation Complete';
+                        document.getElementById('status-text').setAttribute('data-i18n', 'simulation_complete');
                     }
                     
                     document.getElementById('last-update').textContent = 
                         'Last Update: ' + new Date().toLocaleTimeString();
+                    const lang = document.documentElement.lang || 'en';
+                    changeLanguage(lang);
                 })
                 .catch(error => {
                     console.error('Error fetching data:', error);
@@ -890,16 +991,16 @@
                 });
         }
         
-        function updateConnectionStatus(connected) {
+        function updateConnectionStatus(connected, gameStatus = 'disconnected') {
             const statusDot = document.getElementById('connection-status');
             const statusText = document.getElementById('status-text');
             
             if (connected) {
                 statusDot.className = 'status-dot connected';
-                statusText.textContent = 'Connected';
+                statusText.setAttribute('data-i18n', gameStatus);
             } else {
                 statusDot.className = 'status-dot disconnected';
-                statusText.textContent = 'Disconnected';
+                statusText.setAttribute('data-i18n', 'disconnected');
             }
         }
         
