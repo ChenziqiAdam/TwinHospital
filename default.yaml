@@ -147,7 +147,7 @@ continuous_export:
 # Enhanced LLM Configuration
 llm:
   model_name: deepseek-ai/DeepSeek-V3
-  api_key: sk-fxanyzqjnqjwevqrcqclpdekwfslpkyljjrvvelnmipgdotl
+  api_key: your-api-key
   base_url: https://api.siliconflow.cn/v1
   provider: openai
   max_tokens: 7800
