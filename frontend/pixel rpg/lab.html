@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lab Test Room</title>
+<style>
+  html,body{height:100%;margin:0;background:#111;display:grid;place-items:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;border:2px solid #2b2b2b;box-shadow:0 8px 30px rgba(0,0,0,.5);background:#000}
+  .btn{position:fixed;top:14px;right:14px;z-index:10;background:#1f2937;color:#e5e7eb;border:1px solid #ffffff22;padding:6px 10px;border-radius:8px;font:13px system-ui;cursor:pointer;margin-left:8px}
+  #coordBtn{right:170px}
+  .btn:hover{background:#26323f}
+  .coord-panel{position:fixed;left:14px;top:14px;z-index:10;min-width:220px;background:#0b1020d0;color:#e6f1ff;border:1px solid #ffffff22;border-radius:8px;padding:8px 10px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;backdrop-filter:blur(6px);display:none}
+  .coord-panel .tag{color:#9be7ff}
+  .coord-panel .small{opacity:.8;font-size:11px}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#111b;color:#fff;padding:6px 10px;border-radius:8px;display:none}
+  .hint{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);color:#cfd8dc;font:14px system-ui}
+  .hint kbd{background:#263238;color:#fff;padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid #0003}
+</style>
+</head>
+<body>
+<canvas id="game" width="1152" height="768"></canvas>
+<button class="btn" id="coordBtn">📐 Coords (G)</button>
+<button class="btn" id="debugBtn">👀 Show Colliders (O)</button>
+<div class="coord-panel" id="coordPanel"></div>
+<div class="toast" id="toast">按 <kbd>E</kbd> 返回大厅</div>
+<div class="hint">移动：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 方向键 · 碰撞：<kbd>O</kbd> · 坐标：<kbd>G</kbd></div>
+
+<script>
+/* ---------- Assets & Const ---------- */
+const ASSETS={ bg:"lab.png",
+  right:["ACgarRight1.png","ACgarRight2.png","ACgarRight3.png","ACgarRight4.png"],
+  left:["ACharLeft2.png","ACharLeft3.png","ACharLeft4.png"],
+  down:["ACharDown1.png","ACharDown2.png"],
+  up:["ACharUp1.png","ACharUp2.png","ACharUp3.png"] };
+const RETURN_URL="lobby.html";
+const BASE_W=1152, BASE_H=768;
+const doorBoxesBase=[{name:"exit",x:491,y:548,w:100,h:250}];
+const obstacleBase=[
+  {x:0,y:226,w:1151,h:70},{x:429,y:288,w:240,h:40},{x:716,y:285,w:130,h:180},{x:446,y:566,w:230,h:180},
+];
+
+/* ---------- Canvas & Player ---------- */
+const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); ctx.imageSmoothingEnabled=false;
+const player={ x:502, y:468, w:100, h:100, speed:2.2, dir:'left', frame:0, frameTimer:0, frameDelay:100 };
+
+/* ---------- Load ---------- */
+function loadImage(src){return new Promise(r=>{const i=new Image();i.onload=()=>r(i);i.onerror=()=>r(new Image());i.src=src;});}
+async function loadAll(){const imgs={}; imgs.bg=await loadImage(ASSETS.bg);
+  for(const d of["right","left","down","up"]) imgs[d]=await Promise.all(ASSETS[d].map(loadImage)); return imgs;}
+
+/* ---------- Input ---------- */
+const keys=new Set();
+addEventListener('keydown',e=>{const k=e.key.toLowerCase(); if(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright','e','o','g'].includes(k)) e.preventDefault(); keys.add(k);});
+addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+
+/* ---------- Helpers ---------- */
+function scaleRect(r){const sx=canvas.width/BASE_W, sy=canvas.height/BASE_H; return {x:r.x*sx,y:r.y*sy,w:r.w*sx,h:r.h*sy,name:r.name};}
+function rectsOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+function pointInRect(px,py,r){return px>=r.x&&px<=r.x+r.w&&py>=r.y&&py<=r.y+r.h;}
+function toBaseXY(px,py){const sx=BASE_W/canvas.width, sy=BASE_H/canvas.height; return {x:Math.round(px*sx), y:Math.round(py*sy)};}
+
+/* ---------- Debug/Coords UI ---------- */
+const debug={show:false,alpha:.28}, coords={show:false,grid:true,gridSize:32,mouse:{x:0,y:0},hover:null};
+document.getElementById('debugBtn').onclick=()=>toggleDebug();
+document.getElementById('coordBtn').onclick=()=>toggleCoords();
+addEventListener('keydown',e=>{const k=e.key.toLowerCase(); if(k==='o')toggleDebug(); if(k==='g')toggleCoords();});
+function toggleDebug(){ debug.show=!debug.show; document.getElementById('debugBtn').textContent=debug.show?"🙈 Hide Colliders (O)":"👀 Show Colliders (O)"; }
+function toggleCoords(){ coords.show=!coords.show; document.getElementById('coordBtn').textContent=coords.show?"🧮 Coords ON (G)":"📐 Coords (G)"; document.getElementById('coordPanel').style.display=coords.show?'block':'none'; }
+const coordPanel=document.getElementById('coordPanel'); const toast=document.getElementById('toast');
+
+/* 鼠标拾取 */
+canvas.addEventListener('mousemove',e=>{
+  const r=canvas.getBoundingClientRect(), sx=canvas.width/r.width, sy=canvas.height/r.height;
+  coords.mouse.x=Math.round((e.clientX-r.left)*sx); coords.mouse.y=Math.round((e.clientY-r.top)*sy); coords.hover=null;
+  const all=[...doorBoxesBase.map((b,i)=>({type:'door',base:b,idx:i,scaled:scaleRect(b)})), ...obstacleBase.map((b,i)=>({type:'obst',base:b,idx:i,scaled:scaleRect(b)}))].reverse();
+  for(const it of all){ if(pointInRect(coords.mouse.x,coords.mouse.y,it.scaled)){coords.hover=it;break;} }
+});
+canvas.addEventListener('click',()=>{
+  if(!coords.show||!coords.hover)return;
+  const b=coords.hover.base;
+  const data=(coords.hover.type==='door')?{name:b.name,x:b.x,y:b.y,w:b.w,h:b.h}:{x:b.x,y:b.y,w:b.w,h:b.h};
+  navigator.clipboard.writeText(JSON.stringify(data));
+  coordPanel.innerHTML="已复制："+JSON.stringify(data);
+});
+
+/* ---------- Physics ---------- */
+function hitsObstacle(rect){
+  if(rect.x<4||rect.y<4||rect.x+rect.w>canvas.width-4||rect.y+rect.h>canvas.height-4) return true;
+  for(const ob of obstacleBase){ if(rectsOverlap(rect,scaleRect(ob))) return true; }
+  return false;
+}
+function tryMove(dx,dy){
+  const next={x:player.x+dx,y:player.y+dy,w:player.w,h:player.h};
+  if(!hitsObstacle(next)){player.x+=dx;player.y+=dy;return;}
+  const xOnly={x:player.x+dx,y:player.y,w:player.w,h:player.h}; if(!hitsObstacle(xOnly)) player.x+=dx;
+  const yOnly={x:player.x,y:player.y+dy,w:player.w,h:player.h}; if(!hitsObstacle(yOnly)) player.y+=dy;
+}
+
+/* ---------- Loop ---------- */
+let imgs,last=0;
+function update(dt){
+  let vx=0,vy=0;
+  if(keys.has('w')||keys.has('arrowup')){vy-=player.speed;player.dir='up';}
+  if(keys.has('s')||keys.has('arrowdown')){vy+=player.speed;player.dir='down';}
+  if(keys.has('a')||keys.has('arrowleft')){vx-=player.speed;player.dir='left';}
+  if(keys.has('d')||keys.has('arrowright')){vx+=player.speed;player.dir='right';}
+  if(vx&&vy){vx*=0.7071;vy*=0.7071;} tryMove(vx,vy);
+
+  if(vx||vy){player.frameTimer+=dt;const f=imgs[player.dir]; if(player.frameTimer>player.frameDelay){player.frameTimer=0;player.frame=(player.frame+1)%f.length;}}
+  else{player.frame=0;player.frameTimer=0;}
+
+  // 门 & 返回
+  const p={x:player.x,y:player.y,w:player.w,h:player.h}; let near=null;
+  for(const b of doorBoxesBase){ if(rectsOverlap(p,scaleRect(b))){near=b.name;break;} }
+  toast.style.display=near?'block':'none';
+  if(near&&keys.has('e')) location.href=RETURN_URL;
+}
+function draw(){
+  ctx.drawImage(imgs.bg,0,0,canvas.width,canvas.height);
+
+  // 网格/准星
+  if(coords.show&&coords.grid){
+    ctx.save(); ctx.strokeStyle="#ffffff18"; ctx.lineWidth=1;
+    for(let x=0;x<canvas.width;x+=coords.gridSize){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke();}
+    for(let y=0;y<canvas.height;y+=coords.gridSize){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke();}
+    ctx.strokeStyle="#7dd3fcaa";
+    ctx.beginPath();ctx.moveTo(coords.mouse.x,0);ctx.lineTo(coords.mouse.x,canvas.height);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(0,coords.mouse.y);ctx.lineTo(canvas.width,coords.mouse.y);ctx.stroke();
+    ctx.restore();
+  }
+
+  // 玩家
+  const im=imgs[player.dir][player.frame]||imgs[player.dir][0];
+  ctx.drawImage(im,Math.round(player.x),Math.round(player.y),player.w,player.h);
+
+  // 调试层
+  if(debug.show){
+    ctx.save();
+    ctx.globalAlpha=debug.alpha; ctx.fillStyle="#00e5ff"; ctx.strokeStyle="#00bcd4"; ctx.lineWidth=2;
+    obstacleBase.forEach((b,i)=>{const r=scaleRect(b); ctx.fillRect(r.x,r.y,r.w,r.h); ctx.strokeRect(r.x,r.y,r.w,r.h);
+      ctx.globalAlpha=1; ctx.fillStyle="#021b1e"; ctx.fillRect(r.x+4,r.y+4,22,16);
+      ctx.fillStyle="#a7ffeb"; ctx.font="12px monospace"; ctx.fillText(String(i),r.x+8,r.y+16);
+      ctx.globalAlpha=debug.alpha; ctx.fillStyle="#00e5ff";
+    });
+    ctx.globalAlpha=1; ctx.strokeStyle="#00ff90"; doorBoxesBase.forEach(b=>{const r=scaleRect(b); ctx.strokeRect(r.x,r.y,r.w,r.h);});
+    ctx.strokeStyle="#ffd54f"; ctx.strokeRect(player.x,player.y,player.w,player.h);
+    ctx.restore();
+  }
+
+  // 坐标面板
+  if(coords.show){
+    const base=toBaseXY(coords.mouse.x,coords.mouse.y);
+    let hoverText='hover: —';
+    if(coords.hover){
+      const br=coords.hover.base;
+      hoverText = coords.hover.type==='door'
+        ? `hover: <span class="tag">door:${br.name}</span> baseRect: {x:${br.x}, y:${br.y}, w:${br.w}, h:${br.h}}`
+        : `hover: <span class="tag">obst#${coords.hover.idx}</span> baseRect: {x:${br.x}, y:${br.y}, w:${br.w}, h:${br.h}}`;
+    }
+    coordPanel.innerHTML=`<div>mouse canvas: <span class="tag">${coords.mouse.x}, ${coords.mouse.y}</span></div>
+      <div>mouse base: <span class="tag">${base.x}, ${base.y}</span></div>
+      <div class="small">${hoverText}</div>
+      <div class="small">点击悬停区域复制其基准坐标 JSON</div>`;
+    coordPanel.style.display='block';
+  }
+}
+function loop(ts){const dt=ts-last; last=ts; update(dt); draw(); requestAnimationFrame(loop);}
+loadAll().then(r=>{imgs=r; requestAnimationFrame(loop);});
+</script>
+</body>
+</html>
