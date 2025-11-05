@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Medical Record</title>
+<style>
+  :root{
+    --bg:#f7f9fc; --card:#ffffff; --ink:#111827; --muted:#6b7280; --line:#e5e7eb;
+    --primary:#0f766e; --warn:#f59e0b; --ok:#16a34a; --bad:#ef4444; --info:#2563eb;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.6 system-ui,-apple-system,Segoe UI,Roboto}
+  .wrap{max-width:1080px;margin:20px auto;padding:0 16px}
+
+  /* 顶部抬头 */
+  .header{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;display:flex;gap:16px;align-items:center;position:relative}
+  .avatar{width:56px;height:56px;border-radius:12px;background:linear-gradient(135deg,#e2e8f0,#f8fafc);display:grid;place-items:center;font-weight:700;color:#334155}
+  .h-main{flex:1}
+  .h-row1{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .name{font-size:20px;font-weight:700}
+  .pill{font:12px/1.6 system-ui;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:#f8fafc;color:#334155}
+  .h-row2{margin-top:6px;color:var(--muted)}
+  .actions{display:flex;gap:8px}
+  .btn{background:#0b1020;color:#fff;border:0;border-radius:10px;padding:8px 12px;cursor:pointer}
+  .btn.outline{background:#fff;color:#0b1020;border:1px solid #cbd5e1}
+  .btn:hover{opacity:.92}
+  .banner{position:absolute;right:18px;bottom:-12px;background:#eef2ff;color:#3730a3;border:1px solid #c7d2fe;padding:4px 8px;border-radius:8px;font-size:12px}
+
+  /* 模块卡片 */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-top:16px}
+  .card h2{margin:0 0 10px 0;font-size:16px}
+  .subtle{color:var(--muted)}
+
+  /* 临床概览 */
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .kv{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fbfdff}
+  .kv h3{margin:0 0 6px 0;font-size:13px;color:#374151}
+
+  /* 表格 */
+  table{width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  thead th{background:#f3f4f6;text-align:left;font-weight:600;padding:10px;border-bottom:1px solid var(--line)}
+  tbody td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
+
+  /* 状态徽章 */
+  .badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;border:1px solid #d1d5db;background:#fff}
+  .badge.ok{color:var(--ok);border-color:#bbf7d0;background:#ecfdf5}
+  .badge.warn{color:var(--warn);border-color:#fde68a;background:#fffbeb}
+  .badge.bad{color:var(--bad);border-color:#fecaca;background:#fef2f2}
+  .badge.info{color:#1d4ed8;border-color:#bfdbfe;background:#eff6ff}
+
+  /* 打印样式 */
+  @media print{
+    body{background:#fff}
+    .actions{display:none}
+    .wrap{max-width:100%;margin:0;padding:0}
+    .card{page-break-inside:avoid}
+    .banner{display:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- 1. 患者抬头 -->
+  <section class="header" id="sec-header">
+    <div class="avatar" id="pat-avatar">P</div>
+    <div class="h-main">
+      <div class="h-row1">
+        <div class="name" data-bind="patient.name">姓名</div>
+        <span class="pill" id="pat-demographics">—</span>
+        <span class="pill" id="pat-id">ID —</span>
+        <span class="pill" id="pat-visit">就诊号 —</span>
+      </div>
+      <div class="h-row2" id="pat-brief">—</div>
+    </div>
+    <div class="actions">
+      <button class="btn outline" id="btn-refresh">刷新</button>
+      <button class="btn outline" id="btn-export">导出 CSV</button>
+      <button class="btn" id="btn-print">打印</button>
+    </div>
+    <div class="banner" id="hint-banner" style="display:none"></div>
+  </section>
+
+  <!-- 2. 临床概览 -->
+  <section class="card" id="sec-summary">
+    <h2>临床概览 Clinical Summary</h2>
+    <div class="grid">
+      <div class="kv">
+        <h3>主诉 Chief Complaint</h3>
+        <div id="cc">未记录</div>
+      </div>
+      <div class="kv">
+        <h3>现病史 HPI</h3>
+        <div id="hpi">未记录</div>
+      </div>
+      <div class="kv">
+        <h3>过敏史 Allergies</h3>
+        <div id="allergies" class="subtle">未记录</div>
+      </div>
+      <div class="kv">
+        <h3>既往史 PMH</h3>
+        <div id="pmh" class="subtle">未记录</div>
+      </div>
+      <div class="kv">
+        <h3>用药史 Medications</h3>
+        <div id="meds" class="subtle">未记录</div>
+      </div>
+      <div class="kv">
+        <h3>今日进展 Today</h3>
+        <div id="today">登记 → 问诊/查体 → 检验 → 处方 → 取药</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. 医嘱表 Orders -->
+  <section class="card" id="sec-orders">
+    <h2>医嘱 Orders</h2>
+    <table>
+      <thead>
+        <tr><th>名称</th><th>开立人</th><th>时间</th><th>状态</th></tr>
+      </thead>
+      <tbody id="orders-body">
+        <!-- 填充行 -->
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4. 检查 / 检验 Tests -->
+  <section class="card" id="sec-tests">
+    <h2>检查 / 检验 Tests</h2>
+    <table>
+      <thead>
+        <tr><th>项目</th><th>关键结果</th><th>报告时间</th><th>状态</th></tr>
+      </thead>
+      <tbody id="tests-body">
+        <!-- 填充行 -->
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 5. 处方与用药 Prescriptions -->
+  <section class="card" id="sec-rx">
+    <h2>处方与用药 Prescriptions</h2>
+    <table>
+      <thead>
+        <tr><th>处方号/药品</th><th>Sig（用法用量）</th><th>开方医生</th><th>状态</th><th>时间</th></tr>
+      </thead>
+      <tbody id="rx-body">
+        <!-- 填充行 -->
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 6. 费用结算 Billing -->
+  <section class="card" id="sec-billing">
+    <h2>费用结算 Billing</h2>
+    <table>
+      <thead>
+        <tr><th>项目</th><th>金额</th><th>支付状态</th><th>时间</th></tr>
+      </thead>
+      <tbody id="billing-body">
+        <!-- 填充行 -->
+      </tbody>
+    </table>
+    <!-- 合计显示口径：合计 | 已支付（医保部分）| 未支付 -->
+    <div class="subtle" id="billing-summary" style="margin-top:8px">合计：— | 已支付：—（医保：—）| 未支付：—</div>
+  </section>
+
+</div>
+
+<script>
+/* ===== 1) 演示兜底数据（当后端和 TwinCore 都无数据时使用） ===== */
+const demoData = {
+  patient: { id: "p-001", visit_id:"V-2025-1104-001", name:"李晓明", gender:"男", age: 29 },
+  summary: {
+    cc: "发热、咽痛 2 天",
+    hpi: "两日前出现低热（最高38.3°C）伴咽痛及干咳，无气促，无皮疹。自服对乙酰氨基酚后体温短暂下降。",
+    allergies: "青霉素（皮疹）",
+    pmh: "健康体检无异常，否认慢性病史",
+    meds: "对乙酰氨基酚 500mg 口服 PRN"
+  },
+  orders: [
+    {id:"ord-1", name:"体格检查", by:"Dr. Chen", ts: 1730660100000, status:"已完成"},
+    {id:"ord-2", name:"血常规 CBC", by:"Dr. Chen", ts: 1730660200000, status:"已开立"},
+    {id:"ord-3", name:"咽拭子病原检测", by:"Dr. Chen", ts: 1730660250000, status:"进行中"}
+  ],
+  tests: [
+    {id:"lab-1", name:"血常规 CBC", key:"WBC 11.8↑, Hb 138, PLT 210", ts:1730661200000, status:"已出"},
+    {id:"lab-2", name:"咽拭子抗原", key:"Influenza A 阴性; B 阴性; Strep A 待出", ts:null, status:"进行中"}
+  ],
+  prescriptions: [
+    {id:"rx-1", medication:"阿莫西林 500mg", sig:"po tid pc × 7d", by:"Dr. Chen", status:"已发药", ts:1730662000000},
+    {id:"rx-2", medication:"布洛芬 200mg", sig:"po prn q6h", by:"Dr. Chen", status:"未取药", ts:1730662100000}
+  ],
+  billing: [
+    {id:"bill-1", service:"门诊挂号", amount:30, insurance:10, status:"已支付", ts:1730660000000},
+    {id:"bill-2", service:"化验：CBC", amount:80, insurance:50, status:"未支付", ts:1730660200000},
+    {id:"bill-3", service:"处方调配", amount:20, insurance:0,  status:"已支付", ts:1730662000000}
+  ]
+};
+
+/* ===== 2) 工具 ===== */
+function qs(){ const u=new URL(location.href); return Object.fromEntries(u.searchParams.entries()); }
+function fmt(ts){ if(!ts) return "—"; try{ return new Date(ts).toLocaleString(); }catch{ return "—"; } }
+function badge(status){
+  const s = status||'—';
+  const cls = /完成|已出|已发药|已支付/.test(s) ? 'ok'
+            : /进行|开立|待/.test(s) ? 'info'
+            : /未取|未支付/.test(s) ? 'warn' : '';
+  return `<span class="badge ${cls}">${s}</span>`;
+}
+function uniqBy(arr, keyFn){
+  const seen=new Set(); const out=[];
+  for(const it of arr||[]){
+    const k=keyFn(it);
+    if(seen.has(k)) continue;
+    seen.add(k); out.push(it);
+  }
+  return out;
+}
+
+/* ===== 3) TwinCore 事件映射 → 富展示四表 ===== */
+function mapEventsToSections(events){
+  const norm = (x)=> (x||'').toLowerCase();
+
+  const orders = [];
+  const tests = [];
+  const prescriptions = [];
+  const billing = [];
+
+  (events||[]).forEach(e=>{
+    const type = norm(e.type);
+    const by = e.by || e.doctor || e.actor || '—';
+    const ts = e.ts || e.time || e.timestamp || null;
+
+    // 医嘱
+    if (/(order|doctor_order|advice|开立|医嘱)/.test(type)){
+      orders.push({ id:e.id||e.uuid||'', name:e.name||e.item||'—', by, ts, status:e.status||'—' });
+      return;
+    }
+
+    // 检查/检验
+    if (/(test|lab|exam|check|inspection|检验|检查)/.test(type)){
+      tests.push({ id:e.id||e.uuid||'', name:e.name||e.item||'—', key:e.key||e.result||'—', ts, status:e.status||'—' });
+      return;
+    }
+
+    // 处方/用药
+    if (/(rx|prescription|drug|med|pharmacy|处方|用药|发药)/.test(type)){
+      prescriptions.push({ id:e.id||e.uuid||'', medication:e.medication||e.name||e.item||'—', sig:e.sig||e.usage||'—', by, status:e.status||'—', ts });
+      return;
+    }
+
+    // 费用/支付
+    if (/(bill|billing|charge|payment|fee|费用|收费|支付)/.test(type)){
+      billing.push({
+        id:e.id||e.uuid||'',
+        service:e.service||e.name||e.item||'—',
+        amount:Number(e.amount)||0,
+        insurance:Number(e.insurance)||0,
+        status:e.status||'—',
+        ts
+      });
+      return;
+    }
+  });
+
+  return { orders, tests, prescriptions, billing };
+}
+
+/* ===== 4) 渲染函数（沿用你的实现） ===== */
+function fillHeader(p){
+  document.getElementById('pat-avatar').textContent = (p.name||'P').slice(0,1);
+  document.querySelector('[data-bind="patient.name"]').textContent = p.name || '—';
+  document.getElementById('pat-demographics').textContent = `${p.gender||'—'} · ${p.age??'—'}岁`;
+  document.getElementById('pat-id').textContent = `ID ${p.id||'—'}`;
+  document.getElementById('pat-visit').textContent = `就诊号 ${p.visit_id||'—'}`;
+  document.getElementById('pat-brief').textContent = '本页为就诊期内的摘要信息与关键结果。';
+}
+
+function fillSummary(s){
+  const put = (id,txt)=>document.getElementById(id).textContent = txt || '未记录';
+  put('cc', s.cc);
+  put('hpi', s.hpi);
+  put('allergies', s.allergies);
+  put('pmh', s.pmh);
+  put('meds', s.meds);
+}
+
+function fillOrders(list){
+  const tb = document.getElementById('orders-body'); tb.innerHTML='';
+  (list||[]).forEach(o=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${o.name||'—'}</td><td>${o.by||'—'}</td><td>${fmt(o.ts)}</td><td>${badge(o.status||'—')}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function fillTests(list){
+  const tb = document.getElementById('tests-body'); tb.innerHTML='';
+  (list||[]).forEach(t=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.name||'—'}</td><td>${t.key||'—'}</td><td>${fmt(t.ts)}</td><td>${badge(t.status||'—')}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function fillRx(list){
+  const tb = document.getElementById('rx-body'); tb.innerHTML='';
+  (list||[]).forEach(r=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${r.id||''} / ${r.medication||'—'}</td><td>${r.sig||'—'}</td><td>${r.by||'—'}</td><td>${badge(r.status||'—')}</td><td>${fmt(r.ts)}</td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function fillBilling(list){
+  const tb = document.getElementById('billing-body'); tb.innerHTML='';
+  let total=0, paid=0, unpaid=0, insurancePaid=0;
+  (list||[]).forEach(b=>{
+    const amt = Number(b.amount)||0;
+    total += amt;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${b.service||'—'}</td><td>¥${amt}</td><td>${badge(b.status||'—')}</td><td>${fmt(b.ts)}</td>`;
+    tb.appendChild(tr);
+    if(b.status==='已支付' || /paid|settled/i.test(b.status||'')){
+      paid += amt;
+      insurancePaid += Number(b.insurance)||0; // 仅统计已支付项目中的医保部分
+    } else {
+      unpaid += amt;
+    }
+  });
+  document.getElementById('billing-summary').textContent =
+    `合计：¥${total} | 已支付：¥${paid}（医保：¥${insurancePaid}）| 未支付：¥${unpaid}`;
+}
+
+/* 导出 CSV（包含医保字段） */
+function toCSV(d){
+  const lines=[];
+  const push=(title,cols,rows)=>{ lines.push(`# ${title}`); lines.push(cols.join(',')); (rows||[]).forEach(r=>lines.push(cols.map(c=>JSON.stringify(r[c]??'')).join(','))); lines.push(''); };
+  push('Orders',['id','name','by','ts','status'], d.orders||[]);
+  push('Tests',['id','name','key','ts','status'], d.tests||[]);
+  push('Prescriptions',['id','medication','sig','by','status','ts'], d.prescriptions||[]);
+  push('Billing',['id','service','amount','insurance','status','ts'], d.billing||[]);
+  return lines.join('\n');
+}
+
+/* ===== 5) 数据聚合：后端 → TwinCore 事件 → demo 兜底 ===== */
+async function tryFetchRecord(patientId, visitId){
+  if(!patientId) return null;
+  const q = visitId ? `?visitId=${encodeURIComponent(visitId)}` : '';
+  try{
+    const res = await fetch(`/api/patient/${encodeURIComponent(patientId)}/record${q}`, {method:'GET'});
+    if(!res.ok) return null;
+    const data = await res.json();
+    return data || null;
+  }catch(e){ return null; }
+}
+
+function getTwinEvents(visitId){
+  try{
+    if(window.TwinCore && typeof window.TwinCore.exportEvents === 'function'){
+      return window.TwinCore.exportEvents({visitId});
+    }
+  }catch(e){}
+  return [];
+}
+
+function mergeData(apiData, eventData, urlCtx){
+  // 1) 起始对象：后端优先，没有就空壳
+  const base = {
+    patient: Object.assign({ id:urlCtx.patientId||'—', visit_id:urlCtx.visitId||'—', name:'—', gender:'—', age:null }, apiData?.patient||{}),
+    visit: Object.assign({ id:urlCtx.visitId||apiData?.visit?.id||'—', dept:'—', doctor:'—', startedAt:null }, apiData?.visit||{}),
+    summary: Object.assign({ cc:null,hpi:null,allergies:null,pmh:null,meds:null }, apiData?.summary||{}),
+    orders: Array.isArray(apiData?.orders) ? apiData.orders.slice() : [],
+    tests: Array.isArray(apiData?.tests) ? apiData.tests.slice() : [],
+    prescriptions: Array.isArray(apiData?.prescriptions) ? apiData.prescriptions.slice() : [],
+    billing: Array.isArray(apiData?.billing) ? apiData.billing.slice() : []
+  };
+
+  // 2) TwinCore 事件映射并合并（后端为主，事件补充）
+  const mapped = mapEventsToSections(eventData||[]);
+  const byId = (x)=> String(x.id||'') + '|' + String(x.name||x.service||x.medication||'');
+  base.orders = uniqBy([...base.orders, ...(mapped.orders||[])], byId);
+  base.tests = uniqBy([...base.tests, ...(mapped.tests||[])], byId);
+  base.prescriptions = uniqBy([...base.prescriptions, ...(mapped.prescriptions||[])], byId);
+  base.billing = uniqBy([...base.billing, ...(mapped.billing||[])], byId);
+
+  // 3) 尝试用事件补 patient/visit 基础字段（如果后端没有给）
+  if((!base.patient.id || base.patient.id==='—') && eventData?.length){
+    const p = eventData.find(e=>e.patientId)||{};
+    if(p.patientId) base.patient.id = p.patientId;
+  }
+  if((!base.patient.visit_id || base.patient.visit_id==='—') && eventData?.length){
+    const v = eventData.find(e=>e.visitId)||{};
+    if(v.visitId) base.patient.visit_id = v.visitId;
+  }
+
+  return base;
+}
+
+/* ===== 6) 事件绑定 ===== */
+document.getElementById('btn-print').onclick = ()=>window.print();
+document.getElementById('btn-export').onclick = ()=>{
+  const csv = toCSV(window.__MR_DATA__||{});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download = 'medical_record.csv';
+  a.click();
+};
+document.getElementById('btn-refresh').onclick = ()=>location.reload();
+
+/* ===== 7) 渲染入口：URL → 后端 → TwinCore → demo ===== */
+(async function bootstrap(){
+  const urlCtx = (()=>{ const p=qs(); return { patientId:p.patientId||null, visitId:p.visitId||null }; })();
+  const hint = document.getElementById('hint-banner');
+
+  // A. TwinCore 事件（用于补全或兜底）
+  const twinEvents = getTwinEvents(urlCtx.visitId);
+
+  // B. 后端拉取（若有 patientId）
+  const apiData = await tryFetchRecord(urlCtx.patientId, urlCtx.visitId);
+
+  // C. 三源合并（后端优先 → TwinCore 事件补 → 缺失走 N/A；最后再考虑 demo）
+  let merged = mergeData(apiData, twinEvents, urlCtx);
+
+  // 判断是否需要 demo 兜底：当 patient.name 仍为空且四表基本全空时
+  const noContent =
+    (!merged.patient?.name || merged.patient.name==='—') &&
+    (merged.orders?.length||0)===0 &&
+    (merged.tests?.length||0)===0 &&
+    (merged.prescriptions?.length||0)===0 &&
+    (merged.billing?.length||0)===0 &&
+    !merged.summary?.cc && !merged.summary?.hpi;
+
+  if(noContent){
+    merged = demoData;
+    hint.style.display='block';
+    hint.textContent='未关联有效就诊，当前展示示例数据';
+  } else if(!apiData && (!urlCtx.patientId)){
+    hint.style.display='block';
+    hint.textContent='未提供 patientId，已根据本地事件聚合渲染';
+  } else if(!apiData){
+    hint.style.display='block';
+    hint.textContent='后端数据不可用，已用本地事件补全';
+  }
+
+  // D. 渲染
+  window.__MR_DATA__ = merged;
+  fillHeader(merged.patient||{});
+  fillSummary(merged.summary||{});
+  fillOrders(merged.orders||[]);
+  fillTests(merged.tests||[]);
+  fillRx(merged.prescriptions||[]);
+  fillBilling(merged.billing||[]);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Lab Test Room</title>
+<style>
+  html,body{height:100%;margin:0;background:#111;display:grid;place-items:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;border:2px solid #2b2b2b;box-shadow:0 8px 30px rgba(0,0,0,.5);background:#000}
+  .btn{position:fixed;top:14px;right:14px;z-index:10;background:#1f2937;color:#e5e7eb;border:1px solid #ffffff22;padding:6px 10px;border-radius:8px;font:13px system-ui;cursor:pointer;margin-left:8px}
+  #coordBtn{right:170px}
+  .btn:hover{background:#26323f}
+  .coord-panel{position:fixed;left:14px;top:14px;z-index:10;min-width:220px;background:#0b1020d0;color:#e6f1ff;border:1px solid #ffffff22;border-radius:8px;padding:8px 10px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;backdrop-filter:blur(6px);display:none}
+  .coord-panel .tag{color:#9be7ff}
+  .coord-panel .small{opacity:.8;font-size:11px}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#111b;color:#fff;padding:6px 10px;border-radius:8px;display:none; z-index:20}
+  .hint{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);color:#cfd8dc;font:14px system-ui}
+  .hint kbd{background:#263238;color:#fff;padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid #0003}
+
+  /* === 对话面板 === */
+  .dialogue-mask{
+    position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.45); z-index:50;
+  }
+  .dialogue{
+    width:min(560px, 92vw); max-height:80vh; overflow:auto;
+    background:#0b1020; border:1px solid #2b3b55; border-radius:12px; padding:14px 16px;
+    box-shadow:0 12px 40px rgba(0,0,0,.6); color:#e6f1ff; font:14px/1.6 system-ui,Segoe UI,Arial;
+  }
+  .dialogue h3{ margin:0 0 8px; font:600 16px system-ui }
+  .dialogue .npc{ opacity:.92; color:#a3d3ff; margin-bottom:8px }
+  .dialogue .choices{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px }
+  .dialogue .choices button{
+    background:#14213a; color:#e5e7eb; border:1px solid #2b3b55; border-radius:10px; padding:8px 10px;
+    font:13px system-ui; cursor:pointer;
+  }
+  .dialogue .choices button:hover{ background:#172b4d }
+  .dialogue .row{ display:flex; justify-content:space-between; align-items:center; gap:8px }
+  .dialogue .close{
+    background:#1f2937; color:#e5e7eb; border:1px solid #ffffff22; padding:6px 10px; border-radius:8px;
+    font:12px system-ui; cursor:pointer;
+  }
+</style>
+</head>
+<body data-room="lab">
+<canvas id="game" width="1152" height="768"></canvas>
+
+<!-- 顶部按钮/提示 -->
+<button class="btn" id="coordBtn">📐 Coords (G)</button>
+<button class="btn" id="debugBtn">👀 Show Colliders (O)</button>
+<div class="coord-panel" id="coordPanel"></div>
+<div class="toast" id="toast">按 <kbd>E</kbd> 返回大厅</div>
+<div class="hint">移动：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 方向键　·　对话：靠近医生桌按 <kbd>E</kbd>　·　碰撞：<kbd>O</kbd>　·　坐标：<kbd>G</kbd>　·　病历：<kbd>R</kbd></div>
+
+<!-- === 对话 Overlay（保持原状） === -->
+<div class="dialogue-mask" id="dlgMask" role="dialog" aria-modal="true">
+  <div class="dialogue" id="dlgBox">
+    <div class="row">
+      <h3 id="dlgTitle">实验室医生</h3>
+      <button class="close" id="dlgClose">关闭</button>
+    </div>
+    <div class="npc" id="dlgText">您好，这里是化验室，请问需要办理什么？</div>
+    <div class="choices" id="dlgChoices"></div>
+  </div>
+</div>
+
+<!-- 统一核心模块 -->
+<script src="twin-core.js"></script>
+<script>
+/* ========= 房间专属配置（仅数据与对话逻辑） ========= */
+
+/* 背景与主角帧 */
+const ASSETS = {
+  bg: "lab.png",
+  right:["ACgarRight1.png","ACgarRight2.png","ACgarRight3.png","ACgarRight4.png"],
+  left: ["ACharLeft2.png","ACharLeft3.png","ACharLeft4.png"],
+  down: ["ACharDown1.png","ACharDown2.png"],
+  up:   ["ACharUp1.png","ACharUp2.png","ACharUp3.png"]
+};
+
+/* 返回大厅 */
+const RETURN_URL = "lobby.html";
+
+/* 以 1152x768 为基准坐标 */
+const BASE_W = 1152, BASE_H = 768;
+
+/* 出口（返回大厅） */
+const doorBoxesBase = [
+  { name:"exit", x:491, y:548, w:100, h:250 }
+];
+
+/* 固定障碍（桌子/设备/墙等） */
+const obstacleBase = [
+  {x:0,   y:226, w:1151, h:70},   // 上方墙体/隔断
+  {x:429, y:288, w:240,  h:40},   // 主工作台（医生在其后）
+  {x:716, y:285, w:130,  h:180},  // 设备
+  {x:446, y:566, w:230,  h:180},  // 下方区域
+];
+
+/* 对话热点：医生桌前站位带（靠近按 E 对话） */
+const talkBoxesBase = [
+  { name:'doctor', x:430, y:332, w:240, h:48, label:'Lab Doctor' }
+];
+
+/* === 对话系统（与原版一致，但事件改走 TwinCore.sceneEvent） === */
+const dlgMask    = document.getElementById('dlgMask');
+const dlgClose   = document.getElementById('dlgClose');
+const dlgTitle   = document.getElementById('dlgTitle');
+const dlgText    = document.getElementById('dlgText');
+const dlgChoices = document.getElementById('dlgChoices');
+
+const Dialogue = {
+  active: false,
+  context: null, // {kind:'doctor'}
+  open(kind='doctor'){
+    this.active = true;
+    this.context = { kind };
+    dlgMask.style.display = 'grid';
+    dlgTitle.textContent = '实验室医生';
+    dlgText.textContent  = '您好，这里是化验室，请问需要办理什么？';
+    renderChoices([
+      {label:'提交化验单/采样', value:'submit_sample'},
+      {label:'查询检测结果',    value:'check_result'},
+      {label:'没事了',          value:'cancel'}
+    ], (val)=>this.choose(val));
+  },
+  choose(val){
+    // 统一入口：先写入本地“病历”，再（可选）上报后端
+    TwinCore.sceneEvent({
+      type:'interaction', room:'lab', target:this.context?.kind,
+      action:'dialogue_choice', choice:val
+    });
+
+    if (val==='submit_sample'){
+      dlgText.textContent = '已登记您的化验单，请稍候，结果出来会同步到病历。';
+      renderChoices([{label:'好的', value:'ok'}], ()=>this.close());
+    } else if (val==='check_result'){
+      dlgText.textContent = '我来查一下……目前结果尚未全部生成，请稍后再来或查看病历。';
+      renderChoices([{label:'明白了', value:'ok'}], ()=>this.close());
+    } else {
+      this.close();
+    }
+  },
+  close(){
+    this.active = false;
+    this.context = null;
+    dlgMask.style.display = 'none';
+  }
+};
+dlgClose.onclick = ()=>Dialogue.close();
+
+function renderChoices(items, onChoose){
+  dlgChoices.innerHTML = '';
+  items.forEach(({label,value})=>{
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.onclick = ()=>onChoose(value);
+    dlgChoices.appendChild(btn);
+  });
+}
+
+/* ========= 初始化 TwinCore ========= */
+TwinCore.init({
+  canvas: document.getElementById('game'),
+  room: document.body.dataset.room || 'lab',
+
+  // 主角初始值（居中靠下，朝左进入医生桌方向）
+  assets: ASSETS,
+  player: { x: 502, y: 468, w: 100, h: 100, speed: 2.2, frameDelay: 100 },
+
+  // 基准坐标与场景元素
+  baseSize: { w: BASE_W, h: BASE_H },
+  doors: doorBoxesBase,
+  obstacles: obstacleBase,
+  talks: talkBoxesBase,
+
+  // UI 绑定（TwinCore 内部接管 O/G/R 开关、坐标面板、Toast）
+  ui: {
+    toast: document.getElementById('toast'),
+    coordBtn: document.getElementById('coordBtn'),
+    debugBtn: document.getElementById('debugBtn'),
+    coordPanel: document.getElementById('coordPanel')
+  },
+
+  // 当对话面板占用时暂停移动/交互
+  getUiLocked: ()=> Dialogue.active,
+
+  // 按 E 时的行为：优先对话，其次返回大厅
+  onInteract: ({ nearTalk, nearDoor })=>{
+    if (nearTalk) {
+      Dialogue.open('doctor');
+      return;
+    }
+    if (nearDoor) {
+      location.href = RETURN_URL;
+    }
+  },
+
+  // 可选：把事件也发给后端；TwinCore 内部失败也不打断流程
+  sceneEventEndpoint: '/api/scene-event',
+});
+</script>
+</body>
+</html>

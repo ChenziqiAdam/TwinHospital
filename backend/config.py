@@ -27,6 +27,7 @@ class HospitalConfig(BaseModel):
     tests: Dict[str, List[str]] = Field(default_factory=dict)
     operation_hours: Dict[str, Any] = Field(default_factory=dict)
     timeout: float
+    consultation_time: Dict[str, float] = Field(default_factory=dict)
 
 class ExportConfig(BaseModel):
     """Configuration for continuous export functionality."""

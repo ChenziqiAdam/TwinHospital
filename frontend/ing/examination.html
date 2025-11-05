@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Examination Room</title>
+<style>
+  html,body{height:100%;margin:0;background:#111;display:grid;place-items:center}
+  canvas{image-rendering:pixelated;image-rendering:crisp-edges;border:2px solid #2b2b2b;box-shadow:0 8px 30px rgba(0,0,0,.5);background:#000}
+  .btn{position:fixed;top:14px;right:14px;z-index:10;background:#1f2937;color:#e5e7eb;border:1px solid #ffffff22;padding:6px 10px;border-radius:8px;font:13px system-ui;cursor:pointer;margin-left:8px}
+  #coordBtn{right:170px}
+  .btn:hover{background:#26323f}
+  .coord-panel{position:fixed;left:14px;top:14px;z-index:10;min-width:220px;background:#0b1020d0;color:#e6f1ff;border:1px solid #ffffff22;border-radius:8px;padding:8px 10px;font:12px/1.4 ui-monospace,Menlo,Consolas,monospace;backdrop-filter:blur(6px);display:none}
+  .coord-panel .tag{color:#9be7ff}
+  .coord-panel .small{opacity:.8;font-size:11px}
+  .toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);background:#111b;color:#fff;padding:6px 10px;border-radius:8px;display:none;z-index:20}
+  .hint{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);color:#cfd8dc;font:14px system-ui}
+  .hint kbd{background:#263238;color:#fff;padding:2px 6px;border-radius:4px;font-size:12px;border:1px solid #0003}
+
+  /* === 对话面板（保持与其他页面一致） === */
+  .dialogue-mask{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.45); z-index:50; }
+  .dialogue{
+    width:min(560px, 92vw); max-height:80vh; overflow:auto;
+    background:#0b1020; border:1px solid #2b3b55; border-radius:12px; padding:14px 16px;
+    box-shadow:0 12px 40px rgba(0,0,0,.6); color:#e6f1ff; font:14px/1.6 system-ui,Segoe UI,Arial;
+  }
+  .dialogue h3{ margin:0 0 8px; font:600 16px system-ui }
+  .dialogue .npc{ opacity:.92; color:#a3d3ff; margin-bottom:8px }
+  .dialogue .choices{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px }
+  .dialogue .choices button{
+    background:#14213a; color:#e5e7eb; border:1px solid #2b3b55; border-radius:10px; padding:8px 10px;
+    font:13px system-ui; cursor:pointer;
+  }
+  .dialogue .choices button:hover{ background:#172b4d }
+  .dialogue .row{ display:flex; justify-content:space-between; align-items:center; gap:8px }
+  .dialogue .close{
+    background:#1f2937; color:#e5e7eb; border:1px solid #ffffff22; padding:6px 10px; border-radius:8px;
+    font:12px system-ui; cursor:pointer;
+  }
+</style>
+</head>
+
+<!-- 标记当前房间，TwinCore 用于记录 encounter.room -->
+<body data-room="examination">
+<canvas id="game" width="1152" height="768"></canvas>
+
+<!-- 顶部按钮/提示（TwinCore 接管事件/文案切换） -->
+<button class="btn" id="coordBtn">📐 Coords (G)</button>
+<button class="btn" id="debugBtn">👀 Show Colliders (O)</button>
+<div class="coord-panel" id="coordPanel"></div>
+<div class="toast" id="toast">按 <kbd>E</kbd> 返回大厅</div>
+<div class="hint">
+  移动：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / 方向键 · 对话：靠近窗口按 <kbd>E</kbd> · 返回大厅：靠近出口按 <kbd>E</kbd> ·
+  碰撞：<kbd>O</kbd> · 坐标：<kbd>G</kbd> · 病历：<kbd>R</kbd>
+</div>
+
+<!-- === 对话 Overlay（护士窗口） === -->
+<div class="dialogue-mask" id="dlgMask" role="dialog" aria-modal="true">
+  <div class="dialogue" id="dlgBox">
+    <div class="row">
+      <h3 id="dlgTitle">Examination 窗口</h3>
+      <button class="close" id="dlgClose">关闭</button>
+    </div>
+    <div class="npc" id="dlgText">您好，我是检查室护士，请问需要办理什么？</div>
+    <div class="choices" id="dlgChoices"></div>
+  </div>
+</div>
+
+<!-- 统一核心模块 -->
+<script src="twin-core.js"></script>
+<script>
+/* ================== 房间专属数据（仅配置，不写通用逻辑） ================== */
+
+/** 背景与主角帧资源（文件名与 lobby 保持一致风格） */
+const ASSETS = {
+  bg: "examination.png",
+  right: ["ACgarRight1.png","ACgarRight2.png","ACgarRight3.png","ACgarRight4.png"],
+  left:  ["ACharLeft2.png","ACharLeft3.png","ACharLeft4.png"],
+  down:  ["ACharDown1.png","ACharDown2.png"],
+  up:    ["ACharUp1.png","ACharUp2.png","ACharUp3.png"]
+};
+
+/** 返回大厅的路由（靠近出口按 E 触发） */
+const RETURN_URL = "lobby.html";
+
+/** 基准分辨率（与素材/坐标相同） */
+const BASE_W = 1152, BASE_H = 768;
+
+/** 出口区域（返回大厅） */
+const doorBoxesBase = [
+  // 让玩家在门口区域按 E 返回大厅；如需微调坐标，打开 O 看绿色框，再改 x/y/w/h
+  { name:"exit", x:426, y:590, w:250, h:250 }
+];
+
+/** 场景障碍：台面/设备/墙体（不允许穿越） */
+const obstacleBase = [
+  {x:0,   y:226, w:1151, h:200}, // 上侧台面（含窗口后区）
+  {x:427, y:599, w:250,  h:190}, // 下侧设备/障碍（挡住出口后方）
+  {x:705, y:288, w:168,  h:255}, // 右侧设备
+];
+
+/** 窗口前“对话热点”（玩家站位区）——按 E 打开护士对话 */
+const talkBoxesBase = [
+  { name:"nurse", x:420, y:438, w:300, h:44, label:"Nurse Window" }
+];
+
+/* ================== 对话系统（与 lobby 同构，TwinCore 协作暂停移动） ================== */
+const dlgMask    = document.getElementById('dlgMask');
+const dlgClose   = document.getElementById('dlgClose');
+const dlgTitle   = document.getElementById('dlgTitle');
+const dlgText    = document.getElementById('dlgText');
+const dlgChoices = document.getElementById('dlgChoices');
+
+const Dialogue = {
+  active:false,
+  context:null, // { kind: 'nurse' }
+  open(kind){
+    this.active = true;
+    this.context = { kind };
+    dlgMask.style.display = 'grid';
+    dlgTitle.textContent = 'Examination 窗口 - 护士';
+    dlgText.textContent  = '您好，请选择办理内容：';
+    renderChoices([
+      {label:'申请检查（无检单）', value:'request_exam'},
+      {label:'交付医生开的检单',   value:'submit_order'},
+      {label:'我先等等',           value:'cancel'}
+    ], (val)=>this.choose(val));
+  },
+  choose(val){
+    // 统一写入“病历”（本地持久化），并可选上报后端（取决于 TwinCore.init 的 sceneEventEndpoint）
+    TwinCore.sceneEvent({
+      type: 'interaction',
+      room: 'examination',
+      target: this.context?.kind,      // nurse
+      action: 'dialogue_choice',
+      choice: val
+    });
+
+    if (val === 'request_exam'){
+      dlgText.textContent = '请先至 Consultation 由医生开具检查单，再回来办理。';
+      renderChoices([{label:'好的', value:'ok'}], ()=>this.close());
+    } else if (val === 'submit_order'){
+      dlgText.textContent = '已登记您的检单，请前往指定设备完成检查，稍后在病历中查看结果。';
+      renderChoices([{label:'收到', value:'ok'}], ()=>this.close());
+    } else {
+      this.close();
+    }
+  },
+  close(){
+    this.active = false;
+    this.context = null;
+    dlgMask.style.display = 'none';
+  }
+};
+dlgClose.onclick = ()=>Dialogue.close();
+
+function renderChoices(items, onChoose){
+  dlgChoices.innerHTML = '';
+  items.forEach(({label,value})=>{
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.onclick = ()=>onChoose(value);
+    dlgChoices.appendChild(btn);
+  });
+}
+
+/* ================== 初始化 TwinCore（把本房间数据交给核心模块） ================== */
+TwinCore.init({
+  canvas: document.getElementById('game'),
+  room: document.body.dataset.room || 'examination',
+
+  // 资源与主角初始值（保持与原文件一致的出生点与角色尺寸/速度）
+  assets: ASSETS,
+  player: { x: 502, y: 468, w: 100, h: 100, speed: 2.2, frameDelay: 100 },
+
+  // 基准坐标系与场景数据
+  baseSize: { w: BASE_W, h: BASE_H },
+  doors: doorBoxesBase,
+  obstacles: obstacleBase,
+  talks: talkBoxesBase,
+
+  // UI 绑定（TwinCore 内部接管 O/G/R 键与按钮/面板/Toast）
+  ui: {
+    toast: document.getElementById('toast'),
+    coordBtn: document.getElementById('coordBtn'),
+    debugBtn: document.getElementById('debugBtn'),
+    coordPanel: document.getElementById('coordPanel')
+  },
+
+  // 当对话框打开时，TwinCore 暂停移动与 E 交互
+  getUiLocked: ()=> Dialogue.active,
+
+  // TwinCore 判定靠近后，按 E 时回调此函数（对话优先，其次出口返回大厅）
+  onInteract: ({ nearTalk, nearDoor })=>{
+    if (nearTalk) {
+      Dialogue.open('nurse');
+      return;
+    }
+    if (nearDoor === 'exit') {
+      location.href = RETURN_URL;
+    }
+  },
+
+  // 可选：把事件同步给后端（失败不阻塞前端病历记录）
+  sceneEventEndpoint: '/api/scene-event',
+});
+</script>
+</body>
+</html>
