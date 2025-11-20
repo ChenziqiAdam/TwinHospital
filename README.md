@@ -2,6 +2,10 @@
 
 This system is a digital twin simulator for hospital operations, designed to simulate the various processes and resource scheduling of a real hospital.
 
+## Video Demo
+
+[![Video Demo](https://img.youtube.com/vi/I3LzZKzMB1I/hqdefault.jpg)](https://www.youtube.com/watch?v=I3LzZKzMB1I)
+
 ## Project Structure
 
 - `server.py`: The main entry point for the application. It starts a web server to host the frontend and provide a REST API for the simulation.
