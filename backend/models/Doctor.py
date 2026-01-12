@@ -3,6 +3,14 @@ from typing import Dict, Any, List, Optional
 import logging
 import threading
 from ..config import get_config
+try:
+    from camel.agents import ChatAgent
+    from camel.messages import BaseMessage
+    from camel.models import ModelFactory
+    from camel.types import ModelPlatformType, ModelType
+    CAMEL_AVAILABLE = True
+except ImportError:
+    CAMEL_AVAILABLE = False
 
 # Configure logger for Doctor class
 logger = logging.getLogger(__name__)
@@ -60,12 +68,179 @@ class Doctor:
             "specialization_cases": 0,
             "concurrent_consultations_handled": 0
         }
+
+        # CAMEL Agent
+        self.agent = None
+        if CAMEL_AVAILABLE:
+            self._init_camel_agent()
+        else:
+            logger.warning("CAMEL AI not available. Doctor agent functionality limited.")
         
         # Log doctor initialization
         logger.info(self._format_log_entry("INITIALIZATION", 
             f"Thread-safe doctor initialized - Specialty: {self.specialty}, Experience: {years_experience} years"))
         print(self._format_console_message("INIT", 
             f"Dr. {self.name} ({self.specialty}) joined the hospital [Thread-Safe]"))
+
+    def _init_camel_agent(self):
+        """Initialize the CAMEL agent for the doctor."""
+        try:
+            config = get_config()
+            llm_config = config.llm_config
+            
+            # Determine platform and model
+            model_platform = ModelPlatformType.OPENAI
+            if llm_config.provider == "ollama":
+                model_platform = ModelPlatformType.OPENAI_COMPATIBLE
+
+            model_config_dict = {
+                "temperature": llm_config.temperature,
+                "max_tokens": llm_config.max_tokens
+            }
+
+            model = ModelFactory.create(
+                model_platform=model_platform,
+                model_type=llm_config.model_name,
+                model_config_dict=model_config_dict,
+                url=llm_config.base_url,
+                api_key=llm_config.api_key
+            )
+            
+            system_msg_content = (
+                f"You are Dr. {self.name}, a {self.specialty} specialist with {self.years_experience} years of experience. "
+                "Your job is to review patient information, provide a diagnosis, and recommend a treatment plan."
+            )
+            
+            sys_msg = BaseMessage.make_assistant_message(
+                role_name=f"Dr. {self.name}",
+                content=system_msg_content
+            )
+            
+            self.agent = ChatAgent(system_message=sys_msg, model=model)
+            logger.info(self._format_log_entry("AGENT_INIT", "CAMEL agent initialized successfully"))
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize CAMEL agent: {e}")
+            self.agent = None
+
+    def perform_consultation(self, patient, medical_tests_available) -> str:
+        """
+        Perform consultation using CAMEL agent.
+        
+        Args:
+            patient: Patient object.
+            medical_tests_available: Available medical tests.
+            
+        Returns:
+            str: JSON string response from the agent.
+        """
+        if not self.agent:
+            logger.error("CAMEL agent not initialized")
+            return "{}"
+
+        # Reset agent to clear previous conversation history
+        self.agent.reset()
+
+        # Construct user message with patient info
+        user_msg_content = f"""
+Here is the patient information:
+- Name: {patient.name}
+- Age: {patient.age}
+- Gender: {patient.gender}
+- Symptoms: {patient.symptoms}
+- Medical History: {patient.medical_history}
+
+Here is the consultation history:
+{patient.consultation_history}
+
+Here is his medical records:
+{patient.medical_record}
+
+Here are the medical tests available:
+{medical_tests_available}
+
+Based on the info, first judge whether any tests are needed. If yes, list the tests needed. If no, provide the following in JSON format:
+1. Diagnosis: Your diagnosis based on the provided information.
+2. Prescription: Recommended medications or treatments.
+
+Sample Output 1 (no tests needed):
+```json
+{{
+    "diagnosis": "diagnosis here",
+    "prescription": "prescription here"
+}}
+```
+
+Sample Output 2 (tests needed):
+```json
+{{
+    "tests_needed": ["CT", "X-Ray"]
+}}
+```
+
+IMPORTANT: Strictly follow the output format and only return the json data. No background info or explanation is needed.
+"""
+        user_msg = BaseMessage.make_user_message(role_name="User", content=user_msg_content)
+        
+        try:
+            response = self.agent.step(user_msg)
+            return response.msg.content
+        except Exception as e:
+            logger.error(self._format_log_entry("AGENT_ERROR", f"Error during consultation: {e}"))
+            return "{}"
+
+    def perform_follow_up(self, patient) -> str:
+        """
+        Perform follow-up consultation using CAMEL agent.
+        
+        Args:
+            patient: Patient object.
+            
+        Returns:
+            str: JSON string response from the agent.
+        """
+        if not self.agent:
+            logger.error("CAMEL agent not initialized")
+            return "{}"
+        
+        self.agent.reset()
+        
+        user_msg_content = f"""
+Here is the patient information:
+- Name: {patient.name}
+- Age: {patient.age}
+- Gender: {patient.gender}
+- Symptoms: {patient.symptoms}
+- Medical History: {patient.medical_history}
+
+Here is the consultation history:
+{patient.consultation_history}
+
+Here is his medical records:
+{patient.medical_record}
+
+Based on the info, return the final diagnosis and prescription in JSON format:
+1. Diagnosis: Your diagnosis based on the provided information.
+2. Prescription: Recommended medications or treatments.
+
+Sample Output:
+```json
+{{
+    "diagnosis": "diagnosis here",
+    "prescription": "prescription here"
+}}
+```
+
+IMPORTANT: Strictly follow the output format and only return the json data. No background info or explanation is needed.
+"""
+        try:
+            from camel.messages import BaseMessage
+            user_msg = BaseMessage.make_user_message(role_name="User", content=user_msg_content)
+            response = self.agent.step(user_msg)
+            return response.msg.content
+        except Exception as e:
+            logger.error(self._format_log_entry("AGENT_ERROR", f"Error during follow-up: {e}"))
+            return "{}"
 
     def _validate_specialty(self, specialty: str) -> str:
         """Validates specialty against configuration (thread-safe)."""

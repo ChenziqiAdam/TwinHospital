@@ -711,17 +711,8 @@ class Hospital:
             
             time.sleep(1)
             
-            # LLM consultation
-            consultation_prompt = CONSULTATION_DOCTOR_PROMPT.format(
-                doctor_name=doctor.name, doctor_specialty=doctor.specialty,
-                doctor_years_experience=doctor.years_experience, patient_name=patient.name,
-                patient_age=patient.age, patient_gender=patient.gender,
-                patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
-                consultation_history=patient.consultation_history, medical_record=patient.medical_record,
-                medical_tests=self.medical_tests
-            )
-            
-            llm_response = self.llm.get_completion(prompt=consultation_prompt)
+            # CAMEL Agent consultation
+            llm_response = doctor.perform_consultation(patient, self.medical_tests)
             needs_tests = []
             
             try:
@@ -907,16 +898,8 @@ class Hospital:
             
             time.sleep(1)
             
-            # LLM follow-up consultation
-            follow_up_prompt = FOLLOW_UP_CONSULTATION_PROMPT.format(
-                doctor_name=doctor.name, doctor_specialty=doctor.specialty,
-                doctor_years_experience=doctor.years_experience, patient_name=patient.name,
-                patient_age=patient.age, patient_gender=patient.gender,
-                patient_symptoms=patient.symptoms, patient_medical_history=patient.medical_history,
-                consultation_history=patient.consultation_history, medical_record=patient.medical_record
-            )
-            
-            llm_response = self.llm.get_completion(prompt=follow_up_prompt)
+            # CAMEL Agent follow-up consultation
+            llm_response = doctor.perform_follow_up(patient)
             
             try:
                 response = llm_response.split("```json")[1].split("```")[0].strip()
